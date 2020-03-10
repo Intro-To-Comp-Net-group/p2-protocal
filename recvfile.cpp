@@ -10,6 +10,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <string>
+#include <vector>
 #include "iostream"
 #include "receiverController.h"
 //#include "utils.h"
@@ -45,7 +46,6 @@ int main(int argc, char** argv) {
     int server_sock = socket(AF_INET,SOCK_DGRAM,0);
     if (server_sock < 0) {
         perror("Unable to create socket! \n");
-//        abort();
         exit(1);
     }
 
@@ -87,11 +87,18 @@ int main(int argc, char** argv) {
     }
 
     // Sliding Window
-    window_node * window = new window_node[WINDOW_SIZE];
+    vector<window_node *> window;
     for (int i = 0; i < WINDOW_SIZE; i++) {
-        window[i].isReceived = false;
-        window[i].data = (char *) malloc(PACKET_DATA_LEN);
+        window_node * node = new window_node();
+        node->isReceived = false;
+        node->data = (char *) malloc(PACKET_DATA_LEN);
+        window.push_back(node);
     }
+//    window_node * window = new window_node[WINDOW_SIZE];
+//    for (int i = 0; i < WINDOW_SIZE; i++) {
+//        window[i].isReceived = false;
+//        window[i].data = (char *) malloc(PACKET_DATA_LEN);
+//    }
 
     uint16_t curr_ack = 0;
     // We have last_packet_seq
@@ -113,7 +120,7 @@ int main(int argc, char** argv) {
                 continue;
             }
             // If the packet is received? (duplicate) Do not send ack back!
-            window_node * packet_in_window = &window[seq_num % WINDOW_SIZE];
+            window_node * packet_in_window = window[seq_num % WINDOW_SIZE];
             if (packet_in_window->isReceived) {
                 cout << "[recv data] / IGNORED (duplicate)" <<endl;
                 continue;
@@ -127,7 +134,7 @@ int main(int argc, char** argv) {
             if (seq_num == curr_ack) {  // If matches, write that to file and move window
                 cout << "[recv data] / ACCEPTED (in-order)" << endl;
                 // write back and move
-                update_window(&isComplete);
+                update_window(window, &isComplete, &curr_ack, last_packet_seq);
             } else {    // If fall in window, just store it.
                 cout << "[recv data] / ACCEPTED (out-of-order)" << endl;
             }

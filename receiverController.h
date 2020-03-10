@@ -15,6 +15,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
+#include <vector>
 #include <string>
 #include <fstream>
 
@@ -73,7 +74,8 @@ struct window_node {
 
 
 
-void update_window(bool *finish) {
+void update_window(vector<window_node *> &window, bool *finish, uint16_t * curr_ack, uint16_t last_ack) {
+    // write data back to file, update curr_ack, update window
 
 }
 
