@@ -11,32 +11,11 @@
 #include <netinet/in.h>
 #include <string>
 #include "iostream"
-//#include "receiverController.h"
-#include "utils.h"
+#include "receiverController.h"
+//#include "utils.h"
 
 
 using namespace std;
-
-struct ack_packet {
-    u_short crc;
-    u_short seq_num;
-    u_short ack;
-    uint32_t send_sec;
-    uint32_t send_usec;
-    char * padding;
-};
-
-struct meta_data {
-    uint16_t file_size;
-    string file_dir;
-    string file_name;
-};
-
-struct window_node {
-    bool isReceived;
-    u_short seq_num;
-    struct ack_packet * data;
-};
 
 int main(int argc, char** argv) {
     if (argc != 3) {
@@ -86,7 +65,7 @@ int main(int argc, char** argv) {
     char *buff[BUFFER_SIZE + 16];
     // Start listening
     // First, receive the metadata (first packet)
-    ack_packet * first_ack = (ack_packet *)malloc(16*sizeof(char));// = RController.get_ack_packet();
+    ack_packet * ack = (ack_packet *)malloc(16*sizeof(char));
     uint16_t last_packet_seq;
     while (true) {
         int recv_packet_length = recvfrom(server_sock, buff, sizeof(meta_data),0,(struct sockaddr*) &client_sin, &client_len);
@@ -100,45 +79,72 @@ int main(int argc, char** argv) {
 
         // NEED CHECKSUM
         cout << "RECEIVER: GET META" << endl;
-        first_ack->seq_num = htons(0);
-        first_ack->ack = htons(MAX_SEQ_LEN - 1);
-        sendto(server_sock, first_ack, 16, 0,(struct sockaddr*) &client_sin, client_len);
+        ack->seq_num = htons(0);
+        ack->ack = htons(MAX_SEQ_LEN - 1);
+        sendto(server_sock, ack, 16, 0,(struct sockaddr*) &client_sin, client_len);
         cout << "RECEIVER: Send ACK" << endl;
         break;
     }
 
+    // Sliding Window
+    window_node * window = new window_node[WINDOW_SIZE];
+    for (int i = 0; i < WINDOW_SIZE; i++) {
+        window[i].isReceived = false;
+        window[i].data = (char *) malloc(PACKET_DATA_LEN);
+    }
 
-//    // Sliding Window
-//    window_node * window = new window_node[WINDOW_SIZE];
-//    for (int i = 0; i < WINDOW_SIZE; i++) {
-//        window[i].isReceived = false;
-//        window[i].data = (ack_packet *) malloc(ACK_DATA_LEN);
-//    }
-//
-//    uint16_t curr_ack = 0;
-//    uint16_t last_seq = 0;
-//    bool isComplete = false;
+    uint16_t curr_ack = 0;
+    // We have last_packet_seq
+    bool isComplete = false;
 
+    window_node * received_packet;
+    while (true) {
+        memset(buff, 0, BUFFER_SIZE + 16);
+        int recv_packet_length = recvfrom(server_sock,buff, BUFFER_SIZE + 16, 0, (struct sockaddr*) &client_sin, &client_len);
+        if (recv_packet_length > 0) {
+            cout << "RECEIVER: PACKET RECEIVED" << endl;
+            // Get seq_num of packet received
+            received_packet = (window_node *) buff;
+            uint16_t seq_num = ntohs(received_packet->seq_num);
+            // Check if this is out of the range of window, ignore and do not send ack back!
+            if (seq_num < curr_ack || seq_num >= curr_ack + WINDOW_SIZE) {
+                cout << "[recv data] / IGNORED (out-of-window)" <<endl;
+                // IGNORE OUT OF BOUND
+                continue;
+            }
+            // If the packet is received? (duplicate) Do not send ack back!
+            window_node * packet_in_window = &window[seq_num % WINDOW_SIZE];
+            if (packet_in_window->isReceived) {
+                cout << "[recv data] / IGNORED (duplicate)" <<endl;
+                continue;
+            }
+            // If the expecting packet arrives, write back to file and move window
+            packet_in_window->isReceived = true;
+            packet_in_window->seq_num = seq_num;
+            packet_in_window->data = (char *) malloc(recv_packet_length);
+            memcpy(packet_in_window->data, received_packet->data, recv_packet_length);
 
-//    while (true) {
-//        memset(buff, 0, BUFFER_SIZE + 16);
-//        int recv_packet_length = recvfrom(server_sock,buff, BUFFER_SIZE + 16, 0, (struct sockaddr*) &client_sin, &client_len);
-//        if (recv_packet_length > 0) {
-//            cout << "RECEIVER: PACKET RECEIVED" << endl;
-//            // Get seq_num of packet received
-//
-//            // Check if this is out of the range of window, ignore and do not send ack back!
-//
-//            // If the packet is received? (duplicate) Do not send ack back!
-//
-//            // If the expecting packet arrives, write back to file and move window
-//
-//            // Check is finished?
-//
-//        } else continue;
-//    }
+            if (seq_num == curr_ack) {  // If matches, write that to file and move window
+                cout << "[recv data] / ACCEPTED (in-order)" << endl;
+                // write back and move
+                update_window(&isComplete);
+            } else {    // If fall in window, just store it.
+                cout << "[recv data] / ACCEPTED (out-of-order)" << endl;
+            }
+            // Send back ACK
+            ack->seq_num = htons(0);
+            ack->ack = htons(seq_num);
+            sendto(server_sock, ack, 16, 0,(struct sockaddr*) &client_sin, client_len);
+            // Check is finished?
+            if (isComplete) {
+                cout << "[complete!]" <<endl;
+                break;
+            }
 
-    free(first_ack);
+        } else continue;
+    }
+
+    free(ack);
     close(server_sock);
     return 0;
 }
