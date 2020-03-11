@@ -46,21 +46,21 @@ using namespace std;
 
 struct ack_packet {
     u_short crc;
-    u_short seq_num;
+    bool finish;
     u_short ack;
     uint32_t send_sec;
     uint32_t send_usec;
     char * padding;
 };
 
-//struct send_packet {
-//    uint16_t packet_len;
-//    uint16_t seq_num;
-//    time_t send_time;
-//    time_t recv_time;
-//    int type;
-//    char * data;
-//};
+struct send_node {
+    uint16_t packet_len;
+    uint16_t seq_num;
+    time_t send_time;
+    time_t recv_time;
+    bool received_ack;
+    char * data;
+};
 
 struct meta_data {
     uint16_t file_size;

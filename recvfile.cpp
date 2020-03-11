@@ -86,7 +86,7 @@ int main(int argc, char** argv) {
 
         // NEED CHECKSUM
         cout << "RECEIVER: GET META" << endl;
-        ack->seq_num = htons(0);
+        ack->finish = false;
         ack->ack = htons(MAX_SEQ_LEN - 1);
         sendto(server_sock, ack, 16, 0,(struct sockaddr*) &client_sin, client_len);
         cout << "RECEIVER: Send ACK" << endl;
@@ -106,14 +106,17 @@ int main(int argc, char** argv) {
     ofstream outFile(file_dir + "/" + file_name + ".recv", ios::out | ios::binary);
 //    outFile << "Let's start!"<< flush;
 //    outFile << "Hey Man!"<< flush;
-    window_node * received_packet;
+//    window_node * received_packet;
+    send_node * received_packet;
     while (true) {
         memset(buff, 0, BUFFER_SIZE + 16);
-        int recv_packet_length = recvfrom(server_sock,buff, BUFFER_SIZE + 16, 0, (struct sockaddr*) &client_sin, &client_len);
+        int recv_packet_length = recvfrom(server_sock,buff, BUFFER_SIZE + 16,
+                0, (struct sockaddr*) &client_sin, &client_len);
         if (recv_packet_length > 0) {
             cout << "RECEIVER: PACKET RECEIVED" << endl;
             // Get seq_num of packet received
-            received_packet = (window_node *) buff;
+//            received_packet = (window_node *) buff;
+            received_packet = (send_node *) buff;
             uint16_t seq_num = ntohs(received_packet->seq_num);
             // Check if this is out of the range of window, ignore and do not send ack back!
             if (seq_num < curr_ack || seq_num >= curr_ack + WINDOW_SIZE) {
@@ -141,7 +144,8 @@ int main(int argc, char** argv) {
                 cout << "[recv data] / ACCEPTED (out-of-order)" << endl;
             }
             // Send back ACK
-            ack->seq_num = htons(0);
+            if (isComplete) ack->finish = false;
+            else ack->finish = true;
             ack->ack = htons(seq_num);
             sendto(server_sock, ack, 16, 0,(struct sockaddr*) &client_sin, client_len);
             // Check is finished?

@@ -16,13 +16,12 @@
 #include <netdb.h>
 #include <fstream>
 #include <iostream>
+#include <vector>
 
 using namespace std;
 
 #define BUFFER_SIZE 32768
 #define WINDOW_SIZE 8
-#define ACK_NOT_RECEIVED 0
-#define ACK_RECEIVED 1
 #define MAX_SEQ_LEN 2*WINDOW_SIZE
 
 // Sender data packet configuration
@@ -48,22 +47,30 @@ struct meta_data {
     string file_name;
 };
 
-struct send_packet {
+
+struct send_node {
     uint16_t packet_len;
     uint16_t seq_num;
     time_t send_time;
     time_t recv_time;
-    int type;
+    bool received_ack;
     char * data;
 };
 
+
 struct ack_packet {
     u_short crc;
-    u_short seq_num;
+    bool finish;
     u_short ack;
     uint32_t send_sec;
     uint32_t send_usec;
     char * padding;
+};
+
+struct window_node {
+    bool isReceived;
+    u_short seq_num;
+    char * data;
 };
 
 bool check_file_existence(string file_path) {
@@ -81,24 +88,28 @@ public:
 
     ~senderController();
 
-    send_packet * getPacket();
+    send_node * getPacket();
 
     void setMetadata(meta_data * firstPacket);
 
+    void updateWindow(u_short ack_num);
+
 
 private:
-    send_packet * window;
+//    send_node * window;
+    vector<send_node *> window;
+
     string file_dir;
     string file_name;
     size_t file_path_len;
-    size_t file_len;
-    size_t curr_file_pos;
-    bool finish;
+    long file_len;
+    long curr_file_pos;
+    bool isComplete;
 
     int curr_seq;
     int last_ack_seq;
 
-    FILE *fp;
+    ifstream fp;
 };
 
 #endif //PROJECT2_SENDERCONTROLLER_H

@@ -13,6 +13,7 @@
 #include <netdb.h>
 #include <sys/time.h>
 #include <fcntl.h>
+#include <vector>
 #include "senderController.h"
 #include "senderController.cpp"
 
@@ -77,8 +78,6 @@ int main(int argc, char** argv) {
         exit(1);
     }
 
-    fcntl(send_sock, F_SETFL, O_NONBLOCK);  // Non blocking mode
-
 
     struct sockaddr_in sender_sin;
     memset(&sender_sin, 0, sizeof(sender_sin));
@@ -87,25 +86,27 @@ int main(int argc, char** argv) {
     sender_sin.sin_port = htons(recv_port);
     socklen_t sender_sin_len = sizeof(sender_sin);
 
+    bind(send_sock,(struct sockaddr *) &sender_sin,sizeof(sockaddr));
+
+    fcntl(send_sock, F_SETFL, O_NONBLOCK);  // Non blocking mode
+
     // Start sending the first packet -- file metadata
-
     // Get info about metadata
-    FILE * fp = fopen(file_dir_name.c_str(),"r");
-    if (fp == nullptr) {
-        perror("Cannot open file \n");
-        exit(0);
-    }
-    // Get the length of file
-    fseek(fp,0L,SEEK_END);
-    file_len = ftell(fp);
-    fseek(fp,0L,SEEK_SET);  // set the file to the beginning
+//    FILE * fp = fopen(file_dir_name.c_str(),"r");
+//    if (fp == nullptr) {
+//        perror("Cannot open file \n");
+//        exit(0);
+//    }
+//    // Get the length of file
+//    fseek(fp,0L,SEEK_END);
+//    file_len = ftell(fp);
+//    fseek(fp,0L,SEEK_SET);  // set the file to the beginning
 
 
-    int last_ack_seq = -1;
+//    int last_ack_seq = -1;
     struct timeval timestamp;
     int time_gap;
     bool meta_first_time = true;
-    char buff[BUFFER_SIZE];
 
     senderController sController(file_dir_name);
 
@@ -115,7 +116,7 @@ int main(int argc, char** argv) {
     uint32_t check_point_time = start_usec + 1000000 * start_sec;
 
     // Sending first packet
-    char meta_buff[BUFFER_SIZE];
+    char * buff[BUFFER_SIZE];
     meta_data * first_packet = (meta_data *) malloc(sizeof(meta_data));
 
     sController.setMetadata(first_packet);
@@ -124,6 +125,7 @@ int main(int argc, char** argv) {
     cout << "SEND META Name: " << first_packet->file_name << endl;
     cout << "SEND META Size: " << first_packet->file_size << endl;
 
+    int ACK_len;
     while (true) {
         // NEED TIMEOUT
         if (meta_first_time || time_gap > TIMEOUT) {
@@ -132,12 +134,12 @@ int main(int argc, char** argv) {
             cout << "SENDER: Send META" << endl;
         }
         // Ready to receive ACK for the first packet
-        int ACK_len = recvfrom(send_sock, meta_buff, BUFFER_SIZE, MSG_DONTWAIT, (struct sockaddr *)&sender_sin, &sender_sin_len);
+        ACK_len = recvfrom(send_sock, buff, BUFFER_SIZE, MSG_DONTWAIT, (struct sockaddr *)&sender_sin, &sender_sin_len);
         if (ACK_len > 0) {
             // NEED CHECKSUM
             // Get ACK
-            ack_packet * getFile = (ack_packet *) meta_buff;
-            u_short seq_num = ntohs(getFile->seq_num);
+            ack_packet * getFile = (ack_packet *) buff;
+            bool finish = ntohs(getFile->finish);
             u_short ack_num = ntohs(getFile->ack);
             if (ack_num == MAX_SEQ_LEN - 1) {
                 cout << "ACK: " << ack_num << endl;
@@ -147,16 +149,30 @@ int main(int argc, char** argv) {
             cout << "META SEND FAILED" << endl;
         }
     }
+    free(first_packet);
 
-
-
-
-//    while (true) {
-//        // Send data
-//
-//        // Receive ACK
-//    }
-//    free(first_packet);
+    send_node * packet;
+    while (true) {
+        // 1. Read data, form packet and send
+        packet = sController.getPacket();
+        sendto(send_sock, packet->data, packet->packet_len, 0, (struct sockaddr *)&sender_sin, sender_sin_len);
+        // 2. Receive ACK
+        ACK_len = recvfrom(send_sock, buff, BUFFER_SIZE, MSG_DONTWAIT, (struct sockaddr *)&sender_sin, &sender_sin_len);
+        if (ACK_len > 0) {
+            // NEED CHECKSUM
+            // Get ACK
+            ack_packet * getFile = (ack_packet *) buff;
+            bool isComplete = getFile->finish;
+            u_short ack_num = ntohs(getFile->ack);
+            // If out of window --- Ignore ACK
+            // If in window:
+            sController.updateWindow(ack_num);
+            if (isComplete) {
+                cout << "[completed] finish" << endl;
+                break;
+            }
+        }
+    }
     close(send_sock);
     return 0;
 }
