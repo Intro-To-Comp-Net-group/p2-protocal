@@ -60,7 +60,7 @@ int main(int argc, char** argv) {
         exit(1);
     }
 
-    char *buff[BUFFER_SIZE + 16];
+    char *buff[BUFFER_SIZE];
     ack_packet * ack = (ack_packet *)malloc(16*sizeof(char));
 //    uint16_t last_packet_seq;
 //    uint16_t curr_ack = 0;
@@ -109,15 +109,14 @@ int main(int argc, char** argv) {
 //    window_node * received_packet;
     send_node * received_packet;
     while (true) {
-        memset(buff, 0, BUFFER_SIZE + 16);
-        int recv_packet_length = recvfrom(server_sock,buff, BUFFER_SIZE + 16,
-                0, (struct sockaddr*) &client_sin, &client_len);
+        memset(buff, 0, sizeof(send_node));
+        int recv_packet_length = recvfrom(server_sock,buff, sizeof(send_node), 0, (struct sockaddr*) &client_sin, &client_len);
         if (recv_packet_length > 0) {
             cout << "RECEIVER: PACKET RECEIVED" << endl;
             // Get seq_num of packet received
-//            received_packet = (window_node *) buff;
             received_packet = (send_node *) buff;
-            uint16_t seq_num = ntohs(received_packet->seq_num);
+            uint16_t seq_num = received_packet->seq_num;
+            cout << "RECEIVED SEQ NUM: " <<seq_num << endl;
             // Check if this is out of the range of window, ignore and do not send ack back!
             if (seq_num < curr_ack || seq_num >= curr_ack + WINDOW_SIZE) {
                 cout << "[recv data] / IGNORED (out-of-window)" <<endl;
@@ -144,8 +143,8 @@ int main(int argc, char** argv) {
                 cout << "[recv data] / ACCEPTED (out-of-order)" << endl;
             }
             // Send back ACK
-            if (isComplete) ack->finish = false;
-            else ack->finish = true;
+            if (isComplete) ack->finish = true;
+            else ack->finish = false;
             ack->ack = htons(seq_num);
             sendto(server_sock, ack, 16, 0,(struct sockaddr*) &client_sin, client_len);
             // Check is finished?

@@ -25,7 +25,7 @@ using namespace std;
 #define MAX_SEQ_LEN 2*WINDOW_SIZE
 
 // Sender data packet configuration
-#define PACKET_DATA_LEN 1024
+#define PACKET_DATA_LEN 20
 #define PACKET_HEADER_LEN 4
 #define CRC_POS 0
 #define SEQ_POS 2
@@ -94,9 +94,14 @@ public:
 
     void updateWindow(u_short ack_num);
 
+    bool isAllSent();
+
+    bool isFinish();
+
+    bool inWindow();
+
 
 private:
-//    send_node * window;
     vector<send_node *> window;
 
     string file_dir;
@@ -105,6 +110,8 @@ private:
     long file_len;
     long curr_file_pos;
     bool isComplete;
+
+    bool allSent;
 
     int curr_seq;
     int last_ack_seq;

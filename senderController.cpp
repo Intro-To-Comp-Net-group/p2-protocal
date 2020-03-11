@@ -17,6 +17,7 @@ senderController::senderController(string file_dir_name) {
     fp.seekg(0, std::ios::beg);  // set the file to the beginning
     curr_file_pos = 0;
 
+    allSent = false;
     isComplete = false;
 
     last_ack_seq = -1;
@@ -47,6 +48,7 @@ send_node *senderController::getPacket() {
         fp.read(packet->data, data_left_len);
         packet->packet_len = data_left_len;
         curr_file_pos += data_left_len;
+        allSent = true;
     } else {
         fp.read(packet->data, PACKET_DATA_LEN);
         packet->packet_len = PACKET_DATA_LEN;
@@ -89,4 +91,26 @@ void senderController::updateWindow(u_short ack_num) {
         hasNext = check_node->received_ack;
     }
     return;
+}
+
+bool senderController::isAllSent() {
+    return allSent;
+}
+
+bool senderController::isFinish() {
+    return isComplete;
+}
+
+bool senderController::inWindow() {
+    int next_ack = last_ack_seq + 1;
+    bool is_overflow = next_ack + WINDOW_SIZE > MAX_SEQ_LEN;
+    bool in_range = curr_seq >= next_ack && curr_seq < next_ack + WINDOW_SIZE;
+    if (!is_overflow) return in_range;
+    else {
+        bool in_window = false;
+        if (curr_seq >= 0 && curr_seq < (next_ack + WINDOW_SIZE) % MAX_SEQ_LEN) {
+            in_window = true;
+        }
+        return in_window || in_range;
+    }
 }
