@@ -10,10 +10,9 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include <arpa/inet.h>
 #include <netdb.h>
-
 #include <sys/time.h>
+#include <fcntl.h>
 #include "senderController.h"
 #include "senderController.cpp"
 
@@ -71,12 +70,14 @@ int main(int argc, char** argv) {
     string file_name = file_dir_name.substr(find_pos + 1);
     size_t file_len;
 
-    // Create socket and bind server address
+    // Create socket
     int send_sock = socket(AF_INET, SOCK_DGRAM, 0);  // UDP socket
     if (send_sock < 0) {
         perror("Unable to create socket! \n");
         exit(1);
     }
+
+    fcntl(send_sock, F_SETFL, O_NONBLOCK);  // Non blocking mode
 
 
     struct sockaddr_in sender_sin;
@@ -118,11 +119,6 @@ int main(int argc, char** argv) {
     meta_data * first_packet = (meta_data *) malloc(sizeof(meta_data));
 
     sController.setMetadata(first_packet);
-
-//    first_packet->file_name = file_name;
-//    first_packet->file_dir = file_dir;
-//    first_packet->file_size = file_len;
-//    cout << "File Lenght Send" << file_len <<endl;
 
     cout << "SEND META DIR: " << first_packet->file_dir << endl;
     cout << "SEND META Name: " << first_packet->file_name << endl;

@@ -6,14 +6,12 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <string.h>
-#include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <string>
 #include <vector>
 #include "iostream"
 #include "receiverController.h"
-//#include "utils.h"
 
 
 using namespace std;
@@ -63,16 +61,25 @@ int main(int argc, char** argv) {
     }
 
     char *buff[BUFFER_SIZE + 16];
+    ack_packet * ack = (ack_packet *)malloc(16*sizeof(char));
+//    uint16_t last_packet_seq;
+//    uint16_t curr_ack = 0;
+
+    int last_packet_seq;
+    int curr_ack = 0;
+    bool isComplete = false;
+    string file_dir, file_name;
+
     // Start listening
     // First, receive the metadata (first packet)
-    ack_packet * ack = (ack_packet *)malloc(16*sizeof(char));
-    uint16_t last_packet_seq;
     while (true) {
         int recv_packet_length = recvfrom(server_sock, buff, sizeof(meta_data),0,(struct sockaddr*) &client_sin, &client_len);
         if (recv_packet_length <= 0) continue;
 
         meta_data * file_received = (meta_data *) buff;
         last_packet_seq = file_received->file_size;
+        file_dir = file_received->file_dir;
+        file_name = file_received->file_name;
         cout << "File Size Received:" << file_received->file_size<< endl;
         cout << "File Name Received:" << file_received->file_name<< endl;
         cout << "File Dir Received:" << file_received->file_dir << endl;
@@ -94,16 +101,11 @@ int main(int argc, char** argv) {
         node->data = (char *) malloc(PACKET_DATA_LEN);
         window.push_back(node);
     }
-//    window_node * window = new window_node[WINDOW_SIZE];
-//    for (int i = 0; i < WINDOW_SIZE; i++) {
-//        window[i].isReceived = false;
-//        window[i].data = (char *) malloc(PACKET_DATA_LEN);
-//    }
 
-    uint16_t curr_ack = 0;
-    // We have last_packet_seq
-    bool isComplete = false;
-
+    cout << "End of receiving metadata, start receiving packets" << endl;
+    ofstream outFile(file_dir + "/" + file_name + ".recv", ios::out | ios::binary);
+//    outFile << "Let's start!"<< flush;
+//    outFile << "Hey Man!"<< flush;
     window_node * received_packet;
     while (true) {
         memset(buff, 0, BUFFER_SIZE + 16);
@@ -134,7 +136,7 @@ int main(int argc, char** argv) {
             if (seq_num == curr_ack) {  // If matches, write that to file and move window
                 cout << "[recv data] / ACCEPTED (in-order)" << endl;
                 // write back and move
-                update_window(window, &isComplete, &curr_ack, last_packet_seq);
+                update_window(window, &isComplete, &curr_ack, last_packet_seq, outFile);
             } else {    // If fall in window, just store it.
                 cout << "[recv data] / ACCEPTED (out-of-order)" << endl;
             }
@@ -151,6 +153,16 @@ int main(int argc, char** argv) {
         } else continue;
     }
 
+    outFile.close();
+
+    // Free memory
+    for (int i = 0; i < WINDOW_SIZE; i++) {
+        window_node * node = window[i];
+        delete node->data;
+        node->data = nullptr;
+        delete node;
+        node = nullptr;
+    }
     free(ack);
     close(server_sock);
     return 0;

@@ -17,6 +17,7 @@
 #include <netdb.h>
 #include <vector>
 #include <string>
+#include <iostream>
 #include <fstream>
 
 using namespace std;
@@ -41,6 +42,7 @@ using namespace std;
 #define ACK_ACK_POS 4
 
 #define TIMEOUT 5000
+using namespace std;
 
 struct ack_packet {
     u_short crc;
@@ -73,10 +75,29 @@ struct window_node {
 };
 
 
-
-void update_window(vector<window_node *> &window, bool *finish, uint16_t * curr_ack, uint16_t last_ack) {
+void update_window(vector<window_node *> &window, bool *finish, int * curr_ack, int last_ack, ofstream &out_file) {
     // write data back to file, update curr_ack, update window
+    int curr_idx = *curr_ack % WINDOW_SIZE;
+    window_node * currNode = window[curr_idx];
+    bool hasNext = currNode->isReceived;
+    while (hasNext) {
+        if (currNode->seq_num < last_ack) {
+            out_file << currNode->data << flush;
+        } else if (currNode->seq_num == last_ack) {
+            cout << "Reach the last node" <<endl;
+            out_file << currNode->data << flush;
+        }
 
+        currNode->isReceived = false;
+        *curr_ack += 1;
+        curr_idx = (curr_idx + 1) % WINDOW_SIZE;
+        if (*curr_ack == last_ack) {
+            *finish = true;
+            break;
+        }
+        currNode = window[curr_idx];
+        hasNext = currNode->isReceived;
+    }
 }
 
 class receiverController {
