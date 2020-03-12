@@ -60,7 +60,7 @@ int main(int argc, char** argv) {
         perror("binding socket to address error!! \n");
         exit(1);
     }
-    fcntl(server_sock, F_SETFL, O_NONBLOCK);
+//    fcntl(server_sock, F_SETFL, O_NONBLOCK);
 
     char * buff[BUFFER_SIZE];
     int curr_seq = -1;
@@ -88,7 +88,6 @@ int main(int argc, char** argv) {
         if (seq_num == META_DATA_FLAG) {    // Meta Data
             cout << "Meta data received" <<endl;
             meta_data * file_info = (meta_data *) buff;
-            last_seq = file_info->file_size;
             file_dir = file_info->file_dir;
             file_name = file_info->file_name;
 
@@ -102,7 +101,6 @@ int main(int argc, char** argv) {
             sendto(server_sock, &meta_ack, sizeof(meta_ack), 0, (struct sockaddr*) &client_sin, client_len);
 
             // Read
-//            cout <<file_dir + "/"  + file_name + ".recv"<< endl;
             outFile.open(file_dir + "/"  + file_name + ".recv", ios::out | ios::binary);
             curr_seq = 0;
         } else {

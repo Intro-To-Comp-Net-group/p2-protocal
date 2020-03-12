@@ -107,5 +107,5 @@ bool inWindow(int curr_seq, int last_ack_seq) {
         }
         return in_window || in_range;
     }
-
+}
 #endif //PROJECT2PRE_RECEIVERCONTROLLER_H

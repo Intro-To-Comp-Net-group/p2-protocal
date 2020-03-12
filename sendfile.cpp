@@ -15,7 +15,6 @@
 #include <fcntl.h>
 #include <vector>
 #include "senderController.h"
-#include "senderController.cpp"
 
 using namespace std;
 
@@ -69,7 +68,7 @@ int main(int argc, char **argv) {
     }
     string file_dir = file_dir_name.substr(0, find_pos);
     string file_name = file_dir_name.substr(find_pos + 1);
-    size_t file_len;
+//    size_t file_len;
 
     // Create socket
     int send_sock = socket(AF_INET, SOCK_DGRAM, 0);  // UDP socket
@@ -77,7 +76,6 @@ int main(int argc, char **argv) {
         perror("Unable to create socket! \n");
         exit(1);
     }
-
 
     struct sockaddr_in sender_sin;
     memset(&sender_sin, 0, sizeof(sender_sin));
@@ -88,90 +86,67 @@ int main(int argc, char **argv) {
 
     bind(send_sock, (struct sockaddr *) &sender_sin, sizeof(sockaddr));
 
-    fcntl(send_sock, F_SETFL, O_NONBLOCK);  // Non blocking mode
+//    fcntl(send_sock, F_SETFL, O_NONBLOCK);  // Non blocking mode
 
-    // Start sending the first packet -- file metadata
-    // Get info about metadata
+    char * buff[BUFFER_SIZE];
+
+    // Start sending Meta Data
+    char * meta_buff[PACKET_DATA_LEN + sizeof(int) + sizeof(bool)]; // Do we actually need bool as indicator?
+    meta_data *meta_packet = (meta_data *) meta_buff;
+    meta_packet->seq = META_DATA_FLAG;
+    meta_packet->file_name = file_name;
+    meta_packet->file_dir = file_dir;
+
+    cout << "SEND META DIR: " << meta_packet->file_dir << endl;
+    cout << "SEND META Name: " << meta_packet->file_name << endl;
+    cout << "SEND META SEQ: " << meta_packet->seq << endl;
+
     struct timeval timestamp;
+    struct timeval meta_time;
     int time_gap;
     bool meta_first_time = true;
-
-    senderController sController(file_dir_name);
 
     gettimeofday(&timestamp, NULL);
     uint32_t start_sec = timestamp.tv_sec;
     uint32_t start_usec = timestamp.tv_usec;
-    uint32_t check_point_time = start_usec + 1000000 * start_sec;
 
-    // Sending first packet
-    char *buff[BUFFER_SIZE];
-    meta_data *first_packet = (meta_data *) malloc(sizeof(meta_data));
-
-    sController.setMetadata(first_packet);
-
-    cout << "SEND META DIR: " << first_packet->file_dir << endl;
-    cout << "SEND META Name: " << first_packet->file_name << endl;
-    cout << "SEND META Size: " << first_packet->file_size << endl;
-
-    int ACK_len;
+    struct ack_packet * ack_received = (struct ack_packet *) malloc(sizeof(ack_packet));
+    int received_ack_len;
     while (true) {
-        // NEED TIMEOUT
+        // Need Timeout
+        gettimeofday(&meta_time,NULL);
+        time_gap = (meta_time.tv_sec-start_sec)*1000000+(meta_time.tv_usec - start_usec);
         if (meta_first_time || time_gap > TIMEOUT) {
             if (meta_first_time) meta_first_time = false;
-            sendto(send_sock, first_packet, sizeof(meta_data), 0, (struct sockaddr *) &sender_sin, sender_sin_len);
-            cout << "SENDER: Send META" << endl;
+            sendto(send_sock, meta_buff, sizeof(meta_buff), 0, (struct sockaddr *) &sender_sin, sender_sin_len);
+            cout << "SEND META DATA" << endl;
         }
-        // Ready to receive ACK for the first packet
-        ACK_len = recvfrom(send_sock, buff, BUFFER_SIZE, MSG_DONTWAIT, (struct sockaddr *) &sender_sin,
-                           &sender_sin_len);
-        if (ACK_len > 0) {
-            // NEED CHECKSUM
-            // Get ACK
-            ack_packet *getFile = (ack_packet *) buff;
-            bool finish = ntohs(getFile->finish);
-            u_short ack_num = ntohs(getFile->ack);
-            if (ack_num == MAX_SEQ_LEN - 1) {
-                cout << "ACK: " << ack_num << endl;
-                cout << "SENDER: Received ACK for META" << endl;
-                break;
-            }
-            cout << "META SEND FAILED" << endl;
+        received_ack_len = recvfrom(send_sock, ack_received, sizeof(ack_packet), MSG_DONTWAIT,(struct sockaddr*)&sender_sin, &sender_sin_len);
+        int meta_ack = ack_received->ack;
+        bool is_meta = ack_received->is_meta;
+        if (is_meta) {
+            cout << "META ACK RECEIVED" <<endl;
+            break;
         }
     }
-    free(first_packet);
 
-    send_node *packet;
-    while (true) {
-        ACK_len = recvfrom(send_sock, buff, BUFFER_SIZE, MSG_DONTWAIT, (struct sockaddr *) &sender_sin,
-                           &sender_sin_len);
-        if (ACK_len > 0) {
-            // NEED CHECKSUM
-            // Get ACK
-            ack_packet *getFile = (ack_packet *) buff;
-            bool isComplete = getFile->finish;
-            u_short ack_num = ntohs(getFile->ack);
+    // Init window
+    vector<sender_window_node *> window;
+    for (int i = 0; i < WINDOW_SIZE; i++) {
+        sender_window_node * node = (sender_window_node *) malloc(sizeof(sender_window_node));  // Do we need it?
+        node->is_last = false;
+        node->is_received = false;
+        window.push_back(node);
+    }
 
-            // If out of window --- Ignore ACK
-            // If in window:
-            sController.updateWindow(ack_num);
-            if (sController.isFinish()) {
-                cout << "[completed] finish" << endl;
-                break;
-            }
-        }
-
-        // 1. Send Packet
-        if (sController.inWindow() && !sController.isAllSent()) {
-            packet = sController.getPacket();
-            cout << "DATA LEN: " << packet->packet_len << endl;
-            cout << "SEQ NUM: " << packet->seq_num << endl;
-            cout << "DATA: " << packet->data << endl;
-            sendto(send_sock, packet->data, packet->packet_len, 0, (struct sockaddr *) &sender_sin, sender_sin_len);
-            exit(1);
-        }
-        // 2. Receive ACK
+//    while (true) {
+//
+//    }
 
 
+    for (int i = 0; i < WINDOW_SIZE; i++) {
+        sender_window_node * node = window[i];
+        free(node);
     }
     close(send_sock);
     return 0;

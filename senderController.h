@@ -20,57 +20,56 @@
 
 using namespace std;
 
-#define BUFFER_SIZE 32768
+#define PACKET_DATA_LEN 40
+#define PACKET_HEAD_LEN 2*sizeof(int) + sizeof(bool)
+#define BUFFER_SIZE PACKET_DATA_LEN + PACKET_HEAD_LEN
 #define WINDOW_SIZE 8
 #define MAX_SEQ_LEN 2*WINDOW_SIZE
 
-// Sender data packet configuration
-#define PACKET_DATA_LEN 20
+
 #define PACKET_HEADER_LEN 4
 #define CRC_POS 0
 #define SEQ_POS 2
 
-// ACK packet configuration
-#define ACK_DATA_LEN 18
-#define ACK_HEADER_LEN 6
-#define ACK_CRC_POS 0
-#define ACK_SEQ_POS 2
-#define ACK_ACK_POS 4
+#define META_DATA_FLAG -1
 
 
 #define TIMEOUT 5000
 
 
+struct ack_packet {
+    int ack;
+    bool is_meta;
+    bool finish;
+//    uint32_t send_sec;
+//    uint32_t send_usec;
+};
+
 struct meta_data {
-    uint16_t file_size;
+    int seq;
     string file_dir;
     string file_name;
 };
 
-
-struct send_node {
-    uint16_t packet_len;
-    uint16_t seq_num;
+struct data_packet {
+    int seq_num;
+    int packet_len;
+    bool is_last_packet;
 //    time_t send_time;
 //    time_t recv_time;
-    bool received_ack;
     char * data;
 };
 
-
-struct ack_packet {
-    u_short crc;
-    bool finish;
-    u_short ack;
-    uint32_t send_sec;
-    uint32_t send_usec;
-    char * padding;
-};
-
-struct window_node {
+struct receiver_window_node {
     bool isReceived;
-    u_short seq_num;
+    int seq_num;
     char * data;
+};
+
+struct sender_window_node {
+    bool is_received;
+    int seq_num;
+    bool is_last;
 };
 
 bool check_file_existence(string file_path) {
@@ -82,41 +81,41 @@ bool check_file_existence(string file_path) {
     }
 }
 
-class senderController {
-public:
-    explicit senderController(string file_dir_name);
-
-    ~senderController();
-
-    send_node * getPacket();
-
-    void setMetadata(meta_data * firstPacket);
-
-    void updateWindow(u_short ack_num);
-
-    bool isAllSent();
-
-    bool isFinish();
-
-    bool inWindow();
-
-
-private:
-    vector<send_node *> window;
-
-    string file_dir;
-    string file_name;
-    size_t file_path_len;
-    long file_len;
-    long curr_file_pos;
-    bool isComplete;
-
-    bool allSent;
-
-    int curr_seq;
-    int last_ack_seq;
-
-    ifstream fp;
-};
+//class senderController {
+//public:
+//    explicit senderController(string file_dir_name);
+//
+//    ~senderController();
+//
+//    send_node * getPacket();
+//
+//    void setMetadata(meta_data * firstPacket);
+//
+//    void updateWindow(u_short ack_num);
+//
+//    bool isAllSent();
+//
+//    bool isFinish();
+//
+//    bool inWindow();
+//
+//
+//private:
+//    vector<send_node *> window;
+//
+//    string file_dir;
+//    string file_name;
+//    size_t file_path_len;
+//    long file_len;
+//    long curr_file_pos;
+//    bool isComplete;
+//
+//    bool allSent;
+//
+//    int curr_seq;
+//    int last_ack_seq;
+//
+//    ifstream fp;
+//};
 
 #endif //PROJECT2_SENDERCONTROLLER_H
