@@ -142,13 +142,6 @@ int main(int argc, char **argv) {
 
     send_node *packet;
     while (true) {
-        // 1. Send Packet
-        if (sController.inWindow() && !sController.isAllSent()) {
-            packet = sController.getPacket();
-            cout << "SEQ NUM: " << packet->seq_num << endl;
-            sendto(send_sock, packet->data, packet->packet_len, 0, (struct sockaddr *) &sender_sin, sender_sin_len);
-        }
-        // 2. Receive ACK
         ACK_len = recvfrom(send_sock, buff, BUFFER_SIZE, MSG_DONTWAIT, (struct sockaddr *) &sender_sin,
                            &sender_sin_len);
         if (ACK_len > 0) {
@@ -158,7 +151,6 @@ int main(int argc, char **argv) {
             bool isComplete = getFile->finish;
             u_short ack_num = ntohs(getFile->ack);
 
-
             // If out of window --- Ignore ACK
             // If in window:
             sController.updateWindow(ack_num);
@@ -167,6 +159,18 @@ int main(int argc, char **argv) {
                 break;
             }
         }
+
+        // 1. Send Packet
+        if (sController.inWindow() && !sController.isAllSent()) {
+            packet = sController.getPacket();
+            cout << "DATA LEN: " << packet->packet_len << endl;
+            cout << "SEQ NUM: " << packet->seq_num << endl;
+            cout << "DATA: " << packet->data << endl;
+            sendto(send_sock, packet->data, packet->packet_len, 0, (struct sockaddr *) &sender_sin, sender_sin_len);
+            exit(1);
+        }
+        // 2. Receive ACK
+
 
     }
     close(send_sock);

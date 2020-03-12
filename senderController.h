@@ -51,8 +51,8 @@ struct meta_data {
 struct send_node {
     uint16_t packet_len;
     uint16_t seq_num;
-    time_t send_time;
-    time_t recv_time;
+//    time_t send_time;
+//    time_t recv_time;
     bool received_ack;
     char * data;
 };
