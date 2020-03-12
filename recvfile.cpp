@@ -102,7 +102,8 @@ int main(int argc, char** argv) {
             sendto(server_sock, &meta_ack, sizeof(meta_ack), 0, (struct sockaddr*) &client_sin, client_len);
 
             // Read
-            outFile = ofstream(file_dir + "/" + file_name + ".recv", ios::out | ios::binary);
+//            cout <<file_dir + "/"  + file_name + ".recv"<< endl;
+            outFile.open(file_dir + "/"  + file_name + ".recv", ios::out | ios::binary);
             curr_seq = 0;
         } else {
             data_packet * packet = (data_packet *) buff;
@@ -138,15 +139,15 @@ int main(int argc, char** argv) {
             }
 
             // Send back ACK
-            struct ack_packet meta_ack;
-            meta_ack.is_meta = false;
-            meta_ack.ack = seq_num;
+            struct ack_packet send_ack;
+            send_ack.is_meta = false;
+            send_ack.ack = seq_num;
             if (finish) {   // Really NEED this one and this .finish attribute???
-                meta_ack.finish = true;
+                send_ack.finish = true;
             } else {
-                meta_ack.finish = false;
+                send_ack.finish = false;
             }
-            sendto(server_sock, &meta_ack, sizeof(meta_ack), 0, (struct sockaddr*) &client_sin, client_len);
+            sendto(server_sock, &send_ack, sizeof(send_ack), 0, (struct sockaddr*) &client_sin, client_len);
 
             if (finish) {
                 cout << "[complete!]" <<endl;
