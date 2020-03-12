@@ -48,7 +48,8 @@ struct ack_packet {
 };
 
 struct meta_data {
-    int file_size;
+    int seq_num;
+    int file_len;
     string file_dir;
     string file_name;
 };
@@ -59,7 +60,7 @@ struct data_packet {
     bool is_last_packet;
 //    time_t send_time;
 //    time_t recv_time;
-    char * data;
+    char * packet;
 };
 
 struct receiver_window_node {

@@ -14,7 +14,7 @@
 #include <sys/time.h>
 #include <fcntl.h>
 #include <vector>
-#include "senderController.h"
+#include "sendUtils.h"
 
 using namespace std;
 
@@ -68,7 +68,14 @@ int main(int argc, char **argv) {
     }
     string file_dir = file_dir_name.substr(0, find_pos);
     string file_name = file_dir_name.substr(find_pos + 1);
-//    size_t file_len;
+
+    // Open File
+    ifstream inFile;
+    inFile.open(file_dir_name.c_str(), ios::binary | ios::in);
+    inFile.seekg(0, std::ios::end);
+    int file_len = inFile.tellg();
+    inFile.seekg(0, std::ios::beg);  // set the file to the beginning
+    int curr_file_pos = 0;
 
     // Create socket
     int send_sock = socket(AF_INET, SOCK_DGRAM, 0);  // UDP socket
@@ -85,21 +92,23 @@ int main(int argc, char **argv) {
     socklen_t sender_sin_len = sizeof(sender_sin);
 
     bind(send_sock, (struct sockaddr *) &sender_sin, sizeof(sockaddr));
-
-//    fcntl(send_sock, F_SETFL, O_NONBLOCK);  // Non blocking mode
+    fcntl(send_sock, F_SETFL, O_NONBLOCK);  // Non blocking mode
 
     char * buff[BUFFER_SIZE];
 
     // Start sending Meta Data
     char * meta_buff[PACKET_DATA_LEN + sizeof(int) + sizeof(bool)]; // Do we actually need bool as indicator?
     meta_data *meta_packet = (meta_data *) meta_buff;
-    meta_packet->seq = META_DATA_FLAG;
+    meta_packet->seq_num = META_DATA_FLAG;
+    meta_packet->file_len = file_len;
     meta_packet->file_name = file_name;
     meta_packet->file_dir = file_dir;
 
-    cout << "SEND META DIR: " << meta_packet->file_dir << endl;
-    cout << "SEND META Name: " << meta_packet->file_name << endl;
-    cout << "SEND META SEQ: " << meta_packet->seq << endl;
+    cout << "SEND META: SEQ: " << meta_packet->seq_num << " LEN: "<< meta_packet->file_len << " DIR: "
+    << meta_packet->file_dir << "Name: " << meta_packet->file_name << endl;
+
+    int curr_seq = 0;
+    int last_seq = -1;
 
     struct timeval timestamp;
     struct timeval meta_time;
@@ -134,14 +143,63 @@ int main(int argc, char **argv) {
     vector<sender_window_node *> window;
     for (int i = 0; i < WINDOW_SIZE; i++) {
         sender_window_node * node = (sender_window_node *) malloc(sizeof(sender_window_node));  // Do we need it?
+        node->packet = (char *) malloc(BUFFER_SIZE * sizeof(char));
         node->is_last = false;
         node->is_received = false;
         window.push_back(node);
     }
 
-//    while (true) {
-//
-//    }
+    bool isAllSent = false;
+    bool isAllReceive = false;
+
+    while (true) {
+        // SEND
+        sender_window_node * node_to_send;
+        if (!isAllSent && inWindow(last_seq, curr_seq)) {
+            node_to_send = window[curr_seq % WINDOW_SIZE];
+            memset(node_to_send->packet, 0, BUFFER_SIZE * sizeof(char));
+            int pending_len = file_len - curr_file_pos;
+            // Create data packet
+            if (pending_len <= PACKET_DATA_LEN) {
+                node_to_send->is_last = true;
+                // Last node
+                *(int *) (node_to_send->packet) = curr_seq;   // Seq_num
+                *(int *) (node_to_send->packet + sizeof(int)) = pending_len;   // Packet_len
+                *(bool *) (node_to_send->packet + 2*sizeof(int)) = true;   // is_last_packet
+                inFile.read(node_to_send->packet + PACKET_HEADER_LEN,pending_len);
+                isAllSent = true;
+                curr_file_pos += pending_len;
+            } else {
+                node_to_send->is_last = false;
+                // Internal Node
+                *(int *) (node_to_send->packet) = curr_seq;   // Seq_num
+                *(int *) (node_to_send->packet + sizeof(int)) = PACKET_DATA_LEN;   // Packet_len
+                *(bool *) (node_to_send->packet + 2*sizeof(int)) = false;   // is_last_packet
+                inFile.read(node_to_send->packet + PACKET_HEADER_LEN, PACKET_DATA_LEN);
+                isAllSent = false;
+                curr_file_pos += PACKET_DATA_LEN;
+            }
+            // Send data packet
+            memcpy(buff, node_to_send->packet, sizeof(node_to_send->packet));
+            sendto(send_sock, buff, BUFFER_SIZE, 0, (struct sockaddr *) &sender_sin, sender_sin_len);
+            curr_seq += 1;
+        }
+
+        // RECEIVE
+        memset(ack_received, 0, sizeof(ack_received));
+        if (received_ack_len = recvfrom(send_sock, ack_received, sizeof(ack_packet), MSG_DONTWAIT,(struct sockaddr*)&sender_sin, &sender_sin_len) > 0) {
+            cout << "RECEIVED ACK PACKET" << endl;
+            // Extract info of received ACK_packet
+            int ack = ack_received->ack;
+
+            if (inWindow(last_seq, ack)) {
+
+            }
+
+        }
+
+        if (isAllReceive) break;
+    }
 
 
     for (int i = 0; i < WINDOW_SIZE; i++) {

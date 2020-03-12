@@ -60,13 +60,14 @@ int main(int argc, char** argv) {
         perror("binding socket to address error!! \n");
         exit(1);
     }
-//    fcntl(server_sock, F_SETFL, O_NONBLOCK);
+    fcntl(server_sock, F_SETFL, O_NONBLOCK);
 
     char * buff[BUFFER_SIZE];
     int curr_seq = -1;
-    int last_seq;
+    int last_seq = -1;
     bool finish = false;
     ofstream outFile;
+    int file_len;
     string file_dir, file_name;
 
     vector<receiver_window_node *> window;
@@ -82,12 +83,13 @@ int main(int argc, char** argv) {
     while (true) {
         memset(buff, 0, BUFFER_SIZE);
         int recv_len = recvfrom(server_sock, buff, BUFFER_SIZE, MSG_DONTWAIT, (struct sockaddr*) &client_sin, &client_len);
-        if (recv_len <= 0) continue;    // Failed receiving data
-        cout << "PACKET RECEIVED, PACKET SIZE: " << recv_len << endl;
+        if (recv_len <= PACKET_HEADER_LEN) continue;    // Failed receiving data
+        cout << "PACKET RECEIVED, PACKET's DATA SIZE: " << recv_len - PACKET_HEADER_LEN << endl;
         int seq_num = *((int *) buff);
         if (seq_num == META_DATA_FLAG) {    // Meta Data
             cout << "Meta data received" <<endl;
             meta_data * file_info = (meta_data *) buff;
+            file_len = file_info->file_len;
             file_dir = file_info->file_dir;
             file_name = file_info->file_name;
 
@@ -104,9 +106,9 @@ int main(int argc, char** argv) {
             outFile.open(file_dir + "/"  + file_name + ".recv", ios::out | ios::binary);
             curr_seq = 0;
         } else {
-            data_packet * packet = (data_packet *) buff;
-            int packet_len = packet->packet_len;    // *((int *) buff+sizeof(int));
-            bool is_last_packet = packet->is_last_packet;
+            data_packet * received_packet = (data_packet *) buff;
+            int packet_len = received_packet->packet_len;    // *((int *) buff+sizeof(int));
+            bool is_last_packet = received_packet->is_last_packet;
             if (is_last_packet) last_seq = seq_num;
             cout << "Now the received seq num: " << seq_num << endl;
 
@@ -126,7 +128,7 @@ int main(int argc, char** argv) {
             // Copy data into the node
             packet_in_window->isReceived = true;
             packet_in_window->seq_num = seq_num;
-            memcpy(packet_in_window->data,packet->data,PACKET_DATA_LEN); // buff+PACKET_HEAD_LEN
+            memcpy(packet_in_window->data,received_packet->packet + PACKET_HEADER_LEN ,PACKET_DATA_LEN); // buff+PACKET_HEAD_LEN
             // Update window
             if (seq_num == curr_seq) {  // If matches, write that to file and move window
                 cout << "[recv data] / ACCEPTED (in-order)" << endl;
