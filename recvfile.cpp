@@ -117,8 +117,8 @@ int main(int argc, char** argv) {
             if (is_last_packet) last_seq = seq_num;
 
             // Check if this is out of the range of window, ignore and do not send ack back!
-//            if (seq_num < curr_seq || seq_num >= curr_seq + WINDOW_SIZE) {
-            if (!inWindow(seq_num,last_seq)) {
+            if (seq_num < curr_seq || seq_num >= curr_seq + WINDOW_SIZE) {
+//            if (!inWindow(seq_num,last_seq)) {
                 cout << "[recv data] / IGNORED (out-of-window)" <<endl;
                 // IGNORE OUT OF BOUND
                 continue;
@@ -139,13 +139,9 @@ int main(int argc, char** argv) {
             packet_in_window->isReceived = true;
             packet_in_window->seq_num = seq_num;
 
-            cout << "STEP2 " << (char *) buff+PACKET_HEADER_LEN << endl;
-
 //            packet_in_window->data = (char *) malloc(PACKET_DATA_LEN * sizeof(char));
             memset(packet_in_window->data, 0, PACKET_DATA_LEN * sizeof(char));
-            cout << "STEP2.1: " << packet_in_window->data << endl;
-            cout << "STEP2.2: " << buff+PACKET_HEADER_LEN << endl;
-            cout << "STEP 3" <<endl;
+            cout << "STEP2: " << buff+PACKET_HEADER_LEN << endl;
 
             memcpy(packet_in_window->data,(buff+PACKET_HEADER_LEN) ,PACKET_DATA_LEN);     //BUG: 没copy进去
             cout <<"RECEIVED SEQ_NUM: " << received_packet->seq_num << " PACKET LEN: "<< received_packet->packet_len <<
@@ -166,6 +162,7 @@ int main(int argc, char** argv) {
 //                        break;
 //                    }
                     curr_seq += 1;
+                    currNode->isReceived = false;
                     curr_idx = (curr_idx + 1) % WINDOW_SIZE;
                     currNode = window[curr_idx];
                 }
