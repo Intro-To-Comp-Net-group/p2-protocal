@@ -12,9 +12,7 @@
 #include <vector>
 #include <fcntl.h>
 #include "iostream"
-#include "recvUtils.h"
-
-
+#include "utils.h"
 using namespace std;
 
 int main(int argc, char** argv) {
@@ -78,9 +76,7 @@ int main(int argc, char** argv) {
         window.push_back(node);
     }
 
-    // Strategy: metadata stop & wait, others sliding window
     // Metadata stop and wait with timeout
-
     while (true) {
         memset(buff, 0, BUFFER_SIZE);
         int recv_len = recvfrom(server_sock, buff, BUFFER_SIZE, MSG_DONTWAIT, (struct sockaddr*) &client_sin, &client_len);
@@ -118,7 +114,6 @@ int main(int argc, char** argv) {
 
             // Check if this is out of the range of window, ignore and do not send ack back!
             if (seq_num < curr_seq || seq_num >= curr_seq + WINDOW_SIZE) {
-//            if (!inWindow(seq_num,last_seq)) {
                 cout << "[recv data] / IGNORED (out-of-window)" <<endl;
                 // IGNORE OUT OF BOUND
                 continue;
@@ -134,11 +129,10 @@ int main(int argc, char** argv) {
             packet_in_window->isReceived = true;
             packet_in_window->seq_num = seq_num;
 
-//            packet_in_window->data = (char *) malloc(PACKET_DATA_LEN * sizeof(char));
             memset(packet_in_window->data, 0, PACKET_DATA_LEN * sizeof(char));
             cout << "STEP2: " << buff+PACKET_HEADER_LEN << endl;
 
-            memcpy(packet_in_window->data,(buff+PACKET_HEADER_LEN) ,PACKET_DATA_LEN);     //BUG: 没copy进去
+            memcpy(packet_in_window->data,(buff+PACKET_HEADER_LEN) ,PACKET_DATA_LEN);
             cout <<"RECEIVED SEQ_NUM: " << received_packet->seq_num << " PACKET LEN: "<< received_packet->packet_len <<
             " DATA: "<< (char *)packet_in_window->data << endl;
             // Update window
@@ -146,7 +140,6 @@ int main(int argc, char** argv) {
                 cout << "[recv data] / ACCEPTED (in-order)" << endl;
                 cout << "RECEIVED SEQ_NUM " << seq_num << endl;
                 // write back and move
-//                update_window(window, &finish, &curr_seq, &last_seq, outFile);  // DEBUG
 
                 int curr_idx = curr_seq % WINDOW_SIZE;
                 receiver_window_node * currNode = window[curr_idx];

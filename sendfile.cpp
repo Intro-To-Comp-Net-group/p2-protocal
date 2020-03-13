@@ -13,8 +13,7 @@
 #include <sys/time.h>
 #include <fcntl.h>
 #include <vector>
-#include "sendUtils.h"
-
+#include "utils.h"
 using namespace std;
 
 int main(int argc, char **argv) {
@@ -153,6 +152,7 @@ int main(int argc, char **argv) {
     bool last_node = false;
 
     while (true) {
+
         // RECEIVE
         if (recvfrom(send_sock, ack_received, sizeof(ack_packet), MSG_DONTWAIT,(struct sockaddr*)&sender_sin, &sender_sin_len) > 0) {
             // Extract info of received ACK_packet
@@ -169,7 +169,6 @@ int main(int argc, char **argv) {
 
         // SEND
         sender_window_node * node_to_send;
-//        if (!isAllSent && inWindow(last_seq, curr_seq)) {
         if (!isAllSent && curr_seq >= last_seq+1 && curr_seq < last_seq+1 + WINDOW_SIZE) {
             node_to_send = window[curr_seq % WINDOW_SIZE];
             memset(node_to_send->packet, 0, BUFFER_SIZE * sizeof(char));
@@ -203,8 +202,10 @@ int main(int argc, char **argv) {
             int show_len2 = *(int *) (buff + sizeof(int));
             bool show_last2 = *(bool *) (buff + 2*sizeof(int));
             cout << "SEQ NUM: " << curr_seq << " SEND SEQUENCE NUM:" << show2 << " LEN: "<< show_len2 << " LAST?: " << show_last2<<endl;
-            sendto(send_sock, buff, BUFFER_SIZE, 0, (struct sockaddr *) &sender_sin, sender_sin_len);
-            curr_seq += 1;
+            if (sendto(send_sock, buff, BUFFER_SIZE, 0, (struct sockaddr *) &sender_sin, sender_sin_len)>0) {
+                curr_seq += 1;
+            }
+
         }
     }
 
