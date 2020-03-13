@@ -22,10 +22,10 @@
 
 using namespace std;
 
-#define PACKET_DATA_LEN 40
+#define PACKET_DATA_LEN 150
 #define PACKET_HEADER_LEN 2*sizeof(int) + sizeof(bool)
 #define BUFFER_SIZE PACKET_DATA_LEN + PACKET_HEADER_LEN
-#define WINDOW_SIZE 8
+#define WINDOW_SIZE 16
 #define MAX_SEQ_LEN 2*WINDOW_SIZE
 
 

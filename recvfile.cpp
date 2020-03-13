@@ -131,11 +131,6 @@ int main(int argc, char** argv) {
                 continue;
             }
             // Copy data into the node
-//            char *show_content = buff + PACKET_HEADER_LEN;
-//            cout << show_content<<endl;
-//            received_packet->data = (char *) malloc(PACKET_DATA_LEN);
-//            memset(received_packet->data, 0, PACKET_DATA_LEN);
-
             packet_in_window->isReceived = true;
             packet_in_window->seq_num = seq_num;
 
@@ -157,17 +152,15 @@ int main(int argc, char** argv) {
                 receiver_window_node * currNode = window[curr_idx];
                 while (currNode->isReceived) {
                     outFile << currNode->data << flush;
-//                    if (*curr_ack == *last_ack) {
-//                        finish = true;
-//                        break;
-//                    }
+                    if (curr_seq == last_seq) {
+                        finish = true;
+                        break;
+                    }
                     curr_seq += 1;
                     currNode->isReceived = false;
                     curr_idx = (curr_idx + 1) % WINDOW_SIZE;
                     currNode = window[curr_idx];
                 }
-
-
             } else {    // If fall in window, just store it.
                 cout << "[recv data] / ACCEPTED (out-of-order)" << endl;
             }

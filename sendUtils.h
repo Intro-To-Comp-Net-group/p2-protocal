@@ -20,10 +20,10 @@
 
 using namespace std;
 
-#define PACKET_DATA_LEN 40
+#define PACKET_DATA_LEN 150
 #define PACKET_HEADER_LEN 2*sizeof(int) + sizeof(bool)
 #define BUFFER_SIZE PACKET_DATA_LEN + PACKET_HEADER_LEN
-#define WINDOW_SIZE 8
+#define WINDOW_SIZE 16
 #define MAX_SEQ_LEN 2*WINDOW_SIZE
 
 
@@ -76,14 +76,14 @@ bool check_file_existence(string file_path) {
     }
 }
 
-bool inWindow(int last_received_seq, int input_seq) {
-    int next_ack = last_received_seq + 1;
+bool inWindow(int curr_seq, int last_ack_seq) {
+    int next_ack = last_ack_seq + 1;
     bool is_overflow = next_ack + WINDOW_SIZE > MAX_SEQ_LEN;
-    bool in_range = input_seq >= next_ack && input_seq < next_ack + WINDOW_SIZE;
+    bool in_range = curr_seq >= next_ack && curr_seq < next_ack + WINDOW_SIZE;
     if (!is_overflow) return in_range;
     else {
         bool in_window = false;
-        if (input_seq >= 0 && input_seq < (next_ack + WINDOW_SIZE) % MAX_SEQ_LEN) {
+        if (curr_seq >= 0 && curr_seq < (next_ack + WINDOW_SIZE) % MAX_SEQ_LEN) {
             in_window = true;
         }
         return in_window || in_range;
