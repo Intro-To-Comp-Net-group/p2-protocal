@@ -214,7 +214,7 @@ int main(int argc, char **argv) {
         free(node->packet);
         free(node);
     }
-//    free(ack_received);
+    free(ack_received);
     close(send_sock);
     return 0;
 }
