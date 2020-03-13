@@ -62,7 +62,7 @@ int main(int argc, char** argv) {
     }
     fcntl(server_sock, F_SETFL, O_NONBLOCK);
 
-    char * buff[BUFFER_SIZE];
+    char buff[BUFFER_SIZE];
     int curr_seq = -1;
     int last_seq = -1;
     bool finish = false;
@@ -80,11 +80,15 @@ int main(int argc, char** argv) {
 
     // Strategy: metadata stop & wait, others sliding window
     // Metadata stop and wait with timeout
+
     while (true) {
         memset(buff, 0, BUFFER_SIZE);
         int recv_len = recvfrom(server_sock, buff, BUFFER_SIZE, MSG_DONTWAIT, (struct sockaddr*) &client_sin, &client_len);
-        if (recv_len <= PACKET_HEADER_LEN) continue;    // Failed receiving data
+
+        if (recv_len <= 0) continue;    // Failed receiving data
         cout << "PACKET RECEIVED, PACKET's DATA SIZE: " << recv_len - PACKET_HEADER_LEN << endl;
+
+
         int seq_num = *((int *) buff);
         if (seq_num == META_DATA_FLAG) {    // Meta Data
             cout << "Meta data received" <<endl;
@@ -107,33 +111,66 @@ int main(int argc, char** argv) {
             curr_seq = 0;
         } else {
             data_packet * received_packet = (data_packet *) buff;
+
             int packet_len = received_packet->packet_len;    // *((int *) buff+sizeof(int));
             bool is_last_packet = received_packet->is_last_packet;
             if (is_last_packet) last_seq = seq_num;
-            cout << "Now the received seq num: " << seq_num << endl;
 
             // Check if this is out of the range of window, ignore and do not send ack back!
-            if (seq_num < curr_seq || seq_num >= curr_seq + WINDOW_SIZE) {
+//            if (seq_num < curr_seq || seq_num >= curr_seq + WINDOW_SIZE) {
+            if (!inWindow(seq_num,last_seq)) {
                 cout << "[recv data] / IGNORED (out-of-window)" <<endl;
                 // IGNORE OUT OF BOUND
                 continue;
             }
+
             // If the packet is received? (duplicate) Do not send ack back!
             receiver_window_node * packet_in_window = window[seq_num % WINDOW_SIZE];
             if (packet_in_window->isReceived) {
                 cout << "[recv data] / IGNORED (duplicate)" <<endl;
                 continue;
             }
-
             // Copy data into the node
+//            char *show_content = buff + PACKET_HEADER_LEN;
+//            cout << show_content<<endl;
+//            received_packet->data = (char *) malloc(PACKET_DATA_LEN);
+//            memset(received_packet->data, 0, PACKET_DATA_LEN);
+
             packet_in_window->isReceived = true;
             packet_in_window->seq_num = seq_num;
-            memcpy(packet_in_window->data,received_packet->packet + PACKET_HEADER_LEN ,PACKET_DATA_LEN); // buff+PACKET_HEAD_LEN
+
+            cout << "STEP2 " << (char *) buff+PACKET_HEADER_LEN << endl;
+
+//            packet_in_window->data = (char *) malloc(PACKET_DATA_LEN * sizeof(char));
+            memset(packet_in_window->data, 0, PACKET_DATA_LEN * sizeof(char));
+            cout << "STEP2.1: " << packet_in_window->data << endl;
+            cout << "STEP2.2: " << buff+PACKET_HEADER_LEN << endl;
+            cout << "STEP 3" <<endl;
+
+            memcpy(packet_in_window->data,(buff+PACKET_HEADER_LEN) ,PACKET_DATA_LEN);     //BUG: 没copy进去
+            cout <<"RECEIVED SEQ_NUM: " << received_packet->seq_num << " PACKET LEN: "<< received_packet->packet_len <<
+            " DATA: "<< (char *)packet_in_window->data << endl;
             // Update window
             if (seq_num == curr_seq) {  // If matches, write that to file and move window
                 cout << "[recv data] / ACCEPTED (in-order)" << endl;
+                cout << "RECEIVED SEQ_NUM " << seq_num << endl;
                 // write back and move
-                update_window(window, &finish, &curr_seq, &last_seq, outFile);
+//                update_window(window, &finish, &curr_seq, &last_seq, outFile);  // DEBUG
+
+                int curr_idx = curr_seq % WINDOW_SIZE;
+                receiver_window_node * currNode = window[curr_idx];
+                while (currNode->isReceived) {
+                    outFile << currNode->data << flush;
+//                    if (*curr_ack == *last_ack) {
+//                        finish = true;
+//                        break;
+//                    }
+                    curr_seq += 1;
+                    curr_idx = (curr_idx + 1) % WINDOW_SIZE;
+                    currNode = window[curr_idx];
+                }
+
+
             } else {    // If fall in window, just store it.
                 cout << "[recv data] / ACCEPTED (out-of-order)" << endl;
             }

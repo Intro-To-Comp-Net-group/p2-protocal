@@ -23,13 +23,12 @@
 using namespace std;
 
 #define PACKET_DATA_LEN 40
-#define PACKET_HEAD_LEN 2*sizeof(int) + sizeof(bool)
-#define BUFFER_SIZE PACKET_DATA_LEN + PACKET_HEAD_LEN
+#define PACKET_HEADER_LEN 2*sizeof(int) + sizeof(bool)
+#define BUFFER_SIZE PACKET_DATA_LEN + PACKET_HEADER_LEN
 #define WINDOW_SIZE 8
 #define MAX_SEQ_LEN 2*WINDOW_SIZE
 
 
-#define PACKET_HEADER_LEN 4
 #define CRC_POS 0
 #define SEQ_POS 2
 
@@ -60,7 +59,7 @@ struct data_packet {
     bool is_last_packet;
 //    time_t send_time;
 //    time_t recv_time;
-    char * packet;
+    char * data;
 };
 
 struct receiver_window_node {
@@ -76,20 +75,13 @@ void update_window(vector<receiver_window_node *> &window, bool *finish, int * c
     receiver_window_node * currNode = window[curr_idx];
     bool hasNext = currNode->isReceived;
     while (hasNext) {
-        if (currNode->seq_num < *last_ack) {
-            cout << "STEP-step 1"  << endl;
-            out_file << currNode->data << flush;    // Bug
-            cout << "STEP-step 2"  << endl;
-        } else if (currNode->seq_num == *last_ack) {
-            cout << "Reach the last node" <<endl;
-            out_file << currNode->data << flush;
-        }
-        *curr_ack += 1;
-        curr_idx = (curr_idx + 1) % WINDOW_SIZE;
+        out_file << currNode->data << flush;
         if (*curr_ack == *last_ack) {
             *finish = true;
             break;
         }
+        *curr_ack += 1;
+        curr_idx = (curr_idx + 1) % WINDOW_SIZE;
         currNode = window[curr_idx];
         hasNext = currNode->isReceived;
     }
