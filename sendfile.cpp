@@ -95,7 +95,14 @@ int main(int argc, char **argv) {
     char buff[BUFFER_SIZE];
 
     // Start sending Meta Data
-    char * meta_buff[PACKET_DATA_LEN + sizeof(int) + sizeof(bool)]; // Do we actually need bool as indicator?
+//    char * meta_buff[PACKET_DATA_LEN + sizeof(int) + sizeof(bool)]; // Do we actually need bool as indicator?
+//    meta_data *meta_packet = (meta_data *) meta_buff;
+//    meta_packet->seq_num = META_DATA_FLAG;
+//    meta_packet->file_len = file_len;
+//    meta_packet->file_name = file_name;
+//    meta_packet->file_dir = file_dir;
+
+    char meta_buff[PACKET_DATA_LEN + sizeof(int) + sizeof(bool)];
     meta_data *meta_packet = (meta_data *) meta_buff;
     meta_packet->seq_num = META_DATA_FLAG;
     meta_packet->file_len = file_len;
@@ -103,7 +110,7 @@ int main(int argc, char **argv) {
     meta_packet->file_dir = file_dir;
 
     cout << "SEND META: SEQ: " << meta_packet->seq_num << " LEN: "<< meta_packet->file_len << " DIR: "
-    << meta_packet->file_dir << "Name: " << meta_packet->file_name << endl;
+         << meta_packet->file_dir << " Name: " << meta_packet->file_name << endl;
 
     int curr_seq = 0;
     int last_ack_num = -1;
@@ -129,7 +136,6 @@ int main(int argc, char **argv) {
             cout << "SEND META DATA" << endl;
         }
         received_ack_len = recvfrom(send_sock, ack_received, sizeof(ack_packet), MSG_DONTWAIT,(struct sockaddr*)&sender_sin, &sender_sin_len);
-        int meta_ack = ack_received->ack;
         bool is_meta = ack_received->is_meta;
         if (is_meta) {
             cout << "META ACK RECEIVED" <<endl;
@@ -158,16 +164,25 @@ int main(int argc, char **argv) {
             int ack = ack_received->ack;
             cout << "RECEIVED ACK PACKET" << ack << endl;
             if (ack < 0 || ack > MAX_SEQ_LEN) continue;
-            if (curr_seq >= last_ack_num+1 && curr_seq < last_ack_num+1 + WINDOW_SIZE) {
-                if (ack > last_ack_num) last_ack_num = ack;
+//            if (curr_seq >= last_ack_num+1 && curr_seq < last_ack_num+1 + WINDOW_SIZE) {
+//                if (ack > last_ack_num) last_ack_num = ack;
+//            }
+            if (inWindow(ack, last_ack_num)) {
+                if (ack == last_ack_num + 1) {
+                    last_ack_num += 1;
+                    if (last_ack_num == WINDOW_SIZE - 1) {
+                        last_ack_num = -1;
+                    }
+                }
             }
-            if (isAllSent && ack == last_ack_num) isAllReceive = true;
+            if (isAllSent && ack == last_ack_num + 1) break;
         }
-        if (isAllReceive) break;
+//        if (isAllReceive) break;
 
         // SEND
         sender_window_node * node_to_send;
-        if (!isAllSent && curr_seq >= last_ack_num+1 && curr_seq < last_ack_num+1 + WINDOW_SIZE) {
+//        if (!isAllSent && curr_seq >= last_ack_num+1 && curr_seq < last_ack_num+1 + WINDOW_SIZE) {
+        if (!isAllSent && inWindow(curr_seq, last_ack_num)) {
             node_to_send = window[curr_seq % WINDOW_SIZE];
             memset(node_to_send->packet, 0, BUFFER_SIZE * sizeof(char));
             int pending_len = file_len - curr_file_pos;
@@ -202,10 +217,10 @@ int main(int argc, char **argv) {
             if (sendto(send_sock, buff, BUFFER_SIZE, 0, (struct sockaddr *) &sender_sin, sender_sin_len)>0) {
                 curr_seq += 1;
             }
+            if (curr_seq == MAX_SEQ_LEN - 1) curr_seq = 0;
 
         }
     }
-
 
     for (int i = 0; i < WINDOW_SIZE; i++) {
         sender_window_node * node = window[i];
@@ -216,4 +231,3 @@ int main(int argc, char **argv) {
     close(send_sock);
     return 0;
 }
-
