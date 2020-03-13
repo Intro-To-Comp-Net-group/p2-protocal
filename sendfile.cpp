@@ -106,7 +106,7 @@ int main(int argc, char **argv) {
     << meta_packet->file_dir << "Name: " << meta_packet->file_name << endl;
 
     int curr_seq = 0;
-    int last_seq = -1;
+    int last_ack_num = -1;
 
     struct timeval timestamp;
     struct timeval meta_time;
@@ -149,7 +149,6 @@ int main(int argc, char **argv) {
 
     bool isAllSent = false;
     bool isAllReceive = false;
-    bool last_node = false;
 
     while (true) {
 
@@ -159,17 +158,16 @@ int main(int argc, char **argv) {
             int ack = ack_received->ack;
             cout << "RECEIVED ACK PACKET" << ack << endl;
             if (ack < 0 || ack > MAX_SEQ_LEN) continue;
-            if (curr_seq >= last_seq+1 && curr_seq < last_seq+1 + WINDOW_SIZE) {
-                last_seq = ack;
+            if (curr_seq >= last_ack_num+1 && curr_seq < last_ack_num+1 + WINDOW_SIZE) {
+                if (ack > last_ack_num) last_ack_num = ack;
             }
-            if (last_node) isAllReceive = true;
-
+            if (isAllSent && ack == last_ack_num) isAllReceive = true;
         }
         if (isAllReceive) break;
 
         // SEND
         sender_window_node * node_to_send;
-        if (!isAllSent && curr_seq >= last_seq+1 && curr_seq < last_seq+1 + WINDOW_SIZE) {
+        if (!isAllSent && curr_seq >= last_ack_num+1 && curr_seq < last_ack_num+1 + WINDOW_SIZE) {
             node_to_send = window[curr_seq % WINDOW_SIZE];
             memset(node_to_send->packet, 0, BUFFER_SIZE * sizeof(char));
             int pending_len = file_len - curr_file_pos;
@@ -183,7 +181,6 @@ int main(int argc, char **argv) {
                 *(bool *) (node_to_send->packet + 2*sizeof(int)) = true;   // is_last_packet
                 inFile.read(node_to_send->packet + PACKET_HEADER_LEN,pending_len);
                 isAllSent = true;
-                last_node = true;
                 curr_file_pos += pending_len;
             } else {
                 node_to_send->is_last = false;
