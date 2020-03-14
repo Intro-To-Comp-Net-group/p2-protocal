@@ -21,10 +21,10 @@
 
 using namespace std;
 
-#define PACKET_DATA_LEN 165
+#define PACKET_DATA_LEN 50
 #define PACKET_HEADER_LEN 2*sizeof(int) + sizeof(bool)
 #define BUFFER_SIZE PACKET_DATA_LEN + PACKET_HEADER_LEN
-#define WINDOW_SIZE 200
+#define WINDOW_SIZE 4
 #define MAX_SEQ_LEN 2*WINDOW_SIZE
 
 
@@ -104,19 +104,29 @@ void update_window(vector<receiver_window_node *> &window, bool *finish, int * c
     }
 }
 
-
-bool inWindow(int curr_seq, int last_ack_seq) {
-    int next_ack = last_ack_seq + 1;
-    bool is_overflow = next_ack + WINDOW_SIZE > MAX_SEQ_LEN;
-    bool in_range = curr_seq >= next_ack && curr_seq < next_ack + WINDOW_SIZE;
-    if (!is_overflow) return in_range;
-    else {
-        bool in_window = false;
-        if (curr_seq >= 0 && curr_seq < (next_ack + WINDOW_SIZE) % MAX_SEQ_LEN) {
-            in_window = true;
-        }
-        return in_window || in_range;
+bool inWindow(int input_num, int last_action_num) {
+    int next_num = last_action_num + 1;
+    if (next_num + WINDOW_SIZE <= MAX_SEQ_LEN) {
+        return input_num >= next_num && input_num < next_num + WINDOW_SIZE;
+    } else {
+        bool in_left = input_num >= next_num && input_num < next_num + WINDOW_SIZE;
+        bool in_right = input_num >= 0 && input_num < (next_num + WINDOW_SIZE) % MAX_SEQ_LEN;
+        return in_left || in_right;
     }
 }
+
+//bool inWindow(int curr_seq, int last_ack_seq) {
+//    int next_ack = last_ack_seq + 1;
+//    bool is_overflow = next_ack + WINDOW_SIZE > MAX_SEQ_LEN;
+//    bool in_range = curr_seq >= next_ack && curr_seq < next_ack + WINDOW_SIZE;
+//    if (!is_overflow) return in_range;
+//    else {
+//        bool in_window = false;
+//        if (curr_seq >= 0 && curr_seq < (next_ack + WINDOW_SIZE) % MAX_SEQ_LEN) {
+//            in_window = true;
+//        }
+//        return in_window || in_range;
+//    }
+//}
 
 #endif //PROJECT2_UTILS_H
