@@ -154,31 +154,8 @@ int main(int argc, char **argv) {
     }
 
     bool isAllSent = false;
-    bool isAllReceive = false;
 
     while (true) {
-
-        // RECEIVE
-        if (recvfrom(send_sock, ack_received, sizeof(ack_packet), MSG_DONTWAIT,(struct sockaddr*)&sender_sin, &sender_sin_len) > 0) {
-            // Extract info of received ACK_packet
-            int ack = ack_received->ack;
-            cout << "RECEIVED ACK PACKET" << ack << endl;
-            if (ack < 0 || ack > MAX_SEQ_LEN) continue;
-//            if (curr_seq >= last_ack_num+1 && curr_seq < last_ack_num+1 + WINDOW_SIZE) {
-//                if (ack > last_ack_num) last_ack_num = ack;
-//            }
-            if (inWindow(ack, last_ack_num)) {
-                if (ack == last_ack_num + 1) {
-                    last_ack_num += 1;
-                    if (last_ack_num == WINDOW_SIZE - 1) {
-                        last_ack_num = -1;
-                    }
-                }
-            }
-            if (isAllSent && ack == last_ack_num + 1) break;
-        }
-//        if (isAllReceive) break;
-
         // SEND
         sender_window_node * node_to_send;
 //        if (!isAllSent && curr_seq >= last_ack_num+1 && curr_seq < last_ack_num+1 + WINDOW_SIZE) {
@@ -216,9 +193,25 @@ int main(int argc, char **argv) {
             cout << "SEQ NUM: " << curr_seq << " SEND SEQUENCE NUM:" << show2 << " LEN: "<< show_len2 << " LAST?: " << show_last2<<endl;
             if (sendto(send_sock, buff, BUFFER_SIZE, 0, (struct sockaddr *) &sender_sin, sender_sin_len)>0) {
                 curr_seq += 1;
+                if (curr_seq == MAX_SEQ_LEN) curr_seq = 0;
             }
-            if (curr_seq == MAX_SEQ_LEN - 1) curr_seq = 0;
+        }
 
+        // RECEIVE
+        if (recvfrom(send_sock, ack_received, sizeof(ack_packet), MSG_DONTWAIT,(struct sockaddr*)&sender_sin, &sender_sin_len) > 0) {
+            // Extract info of received ACK_packet
+            int ack = ack_received->ack;
+            cout << "RECEIVED ACK PACKET" << ack << endl;
+//            if (ack < 0 || ack > MAX_SEQ_LEN) continue;
+            if (inWindow(ack, last_ack_num)) {
+                if (ack == last_ack_num + 1) {
+                    last_ack_num += 1;
+                    if (last_ack_num == MAX_SEQ_LEN - 1) {
+                        last_ack_num = -1;
+                    }
+                }
+            }
+            if (isAllSent && ack == last_ack_num) break;
         }
     }
 

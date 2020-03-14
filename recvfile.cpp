@@ -113,7 +113,6 @@ int main(int argc, char** argv) {
             if (is_last_packet) last_seq = seq_num;
 
             // Check if this is out of the range of window, ignore and do not send ack back!
-//            if (seq_num < curr_seq || seq_num >= curr_seq + WINDOW_SIZE) {
             if (!inWindow(seq_num, curr_seq - 1)) {
                 cout << "[recv data] / IGNORED (out-of-window)" <<endl;
                 // IGNORE OUT OF BOUND
@@ -131,11 +130,9 @@ int main(int argc, char** argv) {
             packet_in_window->seq_num = seq_num;
 
             memset(packet_in_window->data, 0, PACKET_DATA_LEN * sizeof(char));
-//            cout << "STEP2: " << buff+PACKET_HEADER_LEN << endl;
 
             memcpy(packet_in_window->data,(buff+PACKET_HEADER_LEN) ,PACKET_DATA_LEN);
             cout <<"RECEIVED SEQ_NUM: " << received_packet->seq_num << " PACKET LEN: "<< received_packet->packet_len <<endl;
-//                 " DATA: "<< (char *)packet_in_window->data << endl;
             // Update window
             if (seq_num == curr_seq) {  // If matches, write that to file and move window
                 cout << "[recv data] / ACCEPTED (in-order)" << endl;
@@ -157,7 +154,7 @@ int main(int argc, char** argv) {
             } else {    // If fall in window, just store it.
                 cout << "[recv data] / ACCEPTED (out-of-order)" << endl;
             }
-            if (curr_seq == MAX_SEQ_LEN - 1) {
+            if (curr_seq == MAX_SEQ_LEN) {
                 curr_seq = 0;
             }
 
