@@ -21,15 +21,13 @@
 
 using namespace std;
 
-#define PACKET_DATA_LEN 50
+#define PACKET_DATA_LEN 100
 #define PACKET_HEADER_LEN 2*sizeof(int) + sizeof(bool)
 #define BUFFER_SIZE PACKET_DATA_LEN + PACKET_HEADER_LEN
 #define WINDOW_SIZE 4
 #define MAX_SEQ_LEN 2*WINDOW_SIZE
 
-
-#define CRC_POS 0
-#define SEQ_POS 2
+#define ACK_BUFF_LEN sizeof(int)+sizeof(bool)*2
 
 #define META_DATA_FLAG -1
 
@@ -115,18 +113,17 @@ bool inWindow(int input_num, int last_action_num) {
     }
 }
 
-//bool inWindow(int curr_seq, int last_ack_seq) {
-//    int next_ack = last_ack_seq + 1;
-//    bool is_overflow = next_ack + WINDOW_SIZE > MAX_SEQ_LEN;
-//    bool in_range = curr_seq >= next_ack && curr_seq < next_ack + WINDOW_SIZE;
-//    if (!is_overflow) return in_range;
-//    else {
-//        bool in_window = false;
-//        if (curr_seq >= 0 && curr_seq < (next_ack + WINDOW_SIZE) % MAX_SEQ_LEN) {
-//            in_window = true;
-//        }
-//        return in_window || in_range;
-//    }
-//}
+unsigned short get_checksum(char * addr, int size, int seq) {
+    return seq;
+}
+
+bool check_checksum(char * received_buff) {
+    unsigned short real_checksum = *(int*) (received_buff + 2* sizeof(int) + sizeof(bool));
+//    unsigned short calculated_checksum = get_checksum(received_buff + PACKET_HEADER_LEN, PACKET_DATA_LEN);
+    unsigned short calculated_checksum = get_checksum(received_buff + PACKET_HEADER_LEN, PACKET_DATA_LEN, *(int*) received_buff);
+    return real_checksum == calculated_checksum;
+}
+
+
 
 #endif //PROJECT2_UTILS_H
