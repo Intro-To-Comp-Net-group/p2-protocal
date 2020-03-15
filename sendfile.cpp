@@ -101,6 +101,7 @@ int main(int argc, char **argv) {
     meta_packet->file_len = file_len;
     meta_packet->file_name = file_name;
     meta_packet->file_dir = file_dir;
+    meta_packet->checksum = get_checksum(meta_buff+ sizeof(int)*2 + sizeof(unsigned short), PACKET_DATA_LEN);
 
     cout << "SEND META: SEQ: " << meta_packet->seq_num << " LEN: "<< meta_packet->file_len << " DIR: "
          << meta_packet->file_dir << " Name: " << meta_packet->file_name << endl;
@@ -184,8 +185,12 @@ int main(int argc, char **argv) {
                 *(int *) (node_to_send->packet + sizeof(int)) = pending_len;   // Packet_len
                 *(bool *) (node_to_send->packet + 2*sizeof(int)) = true;   // is_last_packet
                 inFile.read(node_to_send->packet + PACKET_HEADER_LEN,pending_len);
-                isAllSent = true;
+                *(unsigned short *) (node_to_send->packet + 2 * sizeof(int) + sizeof(bool)) =
+                        get_checksum(node_to_send->packet + PACKET_HEADER_LEN, pending_len);
                 curr_file_pos += pending_len;
+                if (curr_file_pos ==file_len) {
+                    isAllSent = true;
+                }
             } else {
                 node_to_send->is_last = false;
                 node_to_send->seq_num = curr_seq;
@@ -194,6 +199,8 @@ int main(int argc, char **argv) {
                 *(int *) (node_to_send->packet + sizeof(int)) = PACKET_DATA_LEN;   // Packet_len
                 *(bool *) (node_to_send->packet + 2*sizeof(int)) = false;   // is_last_packet
                 inFile.read(node_to_send->packet + PACKET_HEADER_LEN, PACKET_DATA_LEN);
+                *(unsigned short *) (node_to_send->packet + 2 * sizeof(int) + sizeof(bool)) =
+                        get_checksum(node_to_send->packet + PACKET_HEADER_LEN, PACKET_DATA_LEN);
                 isAllSent = false;
                 curr_file_pos += PACKET_DATA_LEN;
             }
@@ -203,7 +210,8 @@ int main(int argc, char **argv) {
             int show2 = *(int *) buff;
             int show_len2 = *(int *) (buff + sizeof(int));
             bool show_last2 = *(bool *) (buff + 2*sizeof(int));
-            cout << "SEQ NUM: " << curr_seq << " SEND SEQUENCE NUM:" << show2 << " LEN: "<< show_len2 << " LAST?: " << show_last2<<endl;
+            unsigned short show_checksum = *(unsigned short *) (buff + 2*sizeof(int) + sizeof(bool));
+            cout << "SEQ NUM: " << curr_seq << " SEND SEQUENCE NUM:" << show2 << " LEN: "<< show_len2 << " LAST?: " << show_last2 << " checksum " << show_checksum <<endl;
             if (sendto(send_sock, buff, BUFFER_SIZE, 0, (struct sockaddr *) &sender_sin, sender_sin_len)>0) {
                 curr_seq += 1;
                 if (curr_seq == MAX_SEQ_LEN) curr_seq = 0;

@@ -21,15 +21,16 @@
 
 using namespace std;
 
-#define PACKET_DATA_LEN 100
-#define PACKET_HEADER_LEN 2*sizeof(int) + sizeof(bool)
+#define PACKET_DATA_LEN 40
+#define PACKET_HEADER_LEN 2*sizeof(int) + sizeof(bool) + sizeof(unsigned short)
 #define BUFFER_SIZE PACKET_DATA_LEN + PACKET_HEADER_LEN
+
 #define WINDOW_SIZE 4
 #define MAX_SEQ_LEN 2*WINDOW_SIZE
 
 #define ACK_BUFF_LEN sizeof(int)+sizeof(bool)*2
 
-#define META_DATA_FLAG -1
+#define META_DATA_FLAG 65535
 
 
 #define TIMEOUT 5000
@@ -47,6 +48,7 @@ struct ack_packet {
 struct meta_data {
     int seq_num;
     int file_len;
+    unsigned short checksum;
     string file_dir;
     string file_name;
 };
@@ -55,6 +57,7 @@ struct data_packet {
     int seq_num;
     int packet_len;
     bool is_last_packet;
+    unsigned short checksum;
 //    time_t send_time;
 //    time_t recv_time;
     char * data;
@@ -113,14 +116,21 @@ bool inWindow(int input_num, int last_action_num) {
     }
 }
 
-unsigned short get_checksum(char * addr, int size, int seq) {
-    return seq;
+unsigned short get_checksum(char * addr, int size) {
+    return 1;
 }
 
-bool check_checksum(char * received_buff) {
-    unsigned short real_checksum = *(int*) (received_buff + 2* sizeof(int) + sizeof(bool));
-//    unsigned short calculated_checksum = get_checksum(received_buff + PACKET_HEADER_LEN, PACKET_DATA_LEN);
-    unsigned short calculated_checksum = get_checksum(received_buff + PACKET_HEADER_LEN, PACKET_DATA_LEN, *(int*) received_buff);
+bool check_checksum(char * received_buff, bool is_meta) {
+    unsigned short real_checksum;
+    unsigned short calculated_checksum;
+    if (!is_meta) {
+        real_checksum = *(unsigned short*) (received_buff + 2* sizeof(int) + sizeof(bool));
+//        unsigned short calculated_checksum = get_checksum(received_buff + PACKET_HEADER_LEN, PACKET_DATA_LEN);
+        calculated_checksum = get_checksum(received_buff + PACKET_HEADER_LEN, PACKET_DATA_LEN);
+    } else {
+        real_checksum = *(unsigned short*) (received_buff + 2 * sizeof(int));
+        calculated_checksum = get_checksum(received_buff+sizeof(int)*2, PACKET_DATA_LEN);
+    }
     return real_checksum == calculated_checksum;
 }
 
