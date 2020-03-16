@@ -71,9 +71,9 @@ int main(int argc, char **argv) {
     ifstream inFile;
     inFile.open(file_dir_name.c_str(), ios::binary | ios::in);
     inFile.seekg(0, std::ios::end);
-    int file_len = inFile.tellg();
+    long file_len = inFile.tellg();
     inFile.seekg(0, std::ios::beg);  // set the file to the beginning
-    int curr_file_pos = 0;
+    long curr_file_pos = 0;
 
     // Create socket
     int send_sock = socket(AF_INET, SOCK_DGRAM, 0);  // UDP socket
@@ -174,7 +174,7 @@ int main(int argc, char **argv) {
         if (!isAllSent && inWindow(curr_seq, last_ack_num)) {
             node_to_send = window[curr_seq % WINDOW_SIZE];
             memset(node_to_send->packet, 0, BUFFER_SIZE * sizeof(char));
-            int pending_len = file_len - curr_file_pos;
+            long pending_len = file_len - curr_file_pos;
             cout <<"FILE LEN: " << file_len <<" CURRENT POSITION: " << curr_file_pos << " PENDING: " << pending_len << endl;
             // Create data packet
             if (pending_len <= PACKET_DATA_LEN) {
@@ -188,7 +188,7 @@ int main(int argc, char **argv) {
                 *(unsigned short *) (node_to_send->packet + 2 * sizeof(int) + sizeof(bool)) =
                         get_checksum(node_to_send->packet + PACKET_HEADER_LEN, pending_len);
                 curr_file_pos += pending_len;
-                if (curr_file_pos ==file_len) {
+                if (curr_file_pos == file_len) {
                     isAllSent = true;
                 }
             } else {
@@ -209,11 +209,11 @@ int main(int argc, char **argv) {
 
             // Send data packet
             memcpy(buff, node_to_send->packet, BUFFER_SIZE);
-//            int show2 = *(int *) buff;
-//            int show_len2 = *(int *) (buff + sizeof(int));
-//            bool show_last2 = *(bool *) (buff + 2*sizeof(int));
-//            unsigned short show_checksum = *(unsigned short *) (buff + 2*sizeof(int) + sizeof(bool));
-//            cout << "SEQ NUM: " << curr_seq << " SEND SEQUENCE NUM:" << show2 << " LEN: "<< show_len2 << " LAST?: " << show_last2 << " checksum " << show_checksum <<endl;
+            int show2 = *(int *) buff;
+            int show_len2 = *(int *) (buff + sizeof(int));
+            bool show_last2 = *(bool *) (buff + 2*sizeof(int));
+            unsigned short show_checksum = *(unsigned short *) (buff + 2*sizeof(int) + sizeof(bool));
+            cout << "SEQ NUM: " << curr_seq << " SEND SEQUENCE NUM:" << show2 << " LEN: "<< show_len2 << " LAST?: " << show_last2 << " checksum " << show_checksum <<endl;
             if (sendto(send_sock, buff, BUFFER_SIZE, 0, (struct sockaddr *) &sender_sin, sender_sin_len)>0) {
                 curr_seq += 1;
                 if (curr_seq == MAX_SEQ_LEN) curr_seq = 0;

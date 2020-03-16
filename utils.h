@@ -21,11 +21,11 @@
 
 using namespace std;
 
-#define PACKET_DATA_LEN 40
+#define PACKET_DATA_LEN 1024*1024 / WINDOW_SIZE
 #define PACKET_HEADER_LEN 2*sizeof(int) + sizeof(bool) + sizeof(unsigned short)
 #define BUFFER_SIZE PACKET_DATA_LEN + PACKET_HEADER_LEN
 
-#define WINDOW_SIZE 4
+#define WINDOW_SIZE 512
 #define MAX_SEQ_LEN 2*WINDOW_SIZE
 
 #define ACK_BUFF_LEN sizeof(int)+sizeof(bool)*2
@@ -67,6 +67,7 @@ struct data_packet {
 struct receiver_window_node {
     bool isReceived;
     int seq_num;
+    bool is_last;   // NEWADD
     char * data;
 };
 
@@ -79,7 +80,7 @@ struct sender_window_node {
 };
 
 bool check_file_existence(string file_path) {
-    ifstream file(file_path);
+    ifstream file(file_path.c_str());
     if (!file) return false;
     else {
         file.close();

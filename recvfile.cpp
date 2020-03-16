@@ -157,7 +157,8 @@ int main(int argc, char** argv) {
                     int curr_idx = curr_seq % WINDOW_SIZE;
                     receiver_window_node *currNode = window[curr_idx];
                     while (currNode->isReceived) {
-                        outFile << currNode->data << flush;
+//                        outFile << currNode->data << flush;
+                        outFile.write(currNode->data, packet_len);
                         if (curr_seq == last_seq) {
                             finish = true;
                             break;
