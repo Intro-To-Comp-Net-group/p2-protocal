@@ -80,7 +80,6 @@ int main(int argc, char** argv) {
     while (true) {
         memset(buff, 0, BUFFER_SIZE);
         int recv_len = recvfrom(server_sock, buff, BUFFER_SIZE, MSG_DONTWAIT, (struct sockaddr*) &client_sin, &client_len);
-
         if (recv_len <= 0) continue;    // Failed receiving data
         cout << "PACKET RECEIVED" << endl;
 
@@ -91,6 +90,7 @@ int main(int argc, char** argv) {
             file_len = file_info->file_len;
             file_dir = file_info->file_dir;
             file_name = file_info->file_name;
+            cout <<"FILE IS: " << file_dir + "/"  + file_name <<endl;
 
             ////TODO checksum
             unsigned short file_checksum = file_info->checksum;
@@ -107,11 +107,10 @@ int main(int argc, char** argv) {
             sendto(server_sock, &meta_ack, sizeof(meta_ack), 0, (struct sockaddr*) &client_sin, client_len);
 
             // Read
-            outFile.open(file_dir + "/"  + file_name + ".recv", ios::out | ios::binary);
+            outFile.open((file_dir + "/"  + file_name + ".recv").c_str(), ios::out | ios::binary);
             curr_seq = 0;
         } else {
             data_packet * received_packet = (data_packet *) buff;
-
             int packet_len = received_packet->packet_len;    // *((int *) buff+sizeof(int));
             bool is_last_packet = received_packet->is_last_packet;
 

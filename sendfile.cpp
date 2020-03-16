@@ -46,7 +46,7 @@ int main(int argc, char **argv) {
     }
     string recv_host = recv_host_port.substr(0, find_pos);
     struct hostent *host = gethostbyname(recv_host.c_str());
-    uint16_t recv_port = stoi(recv_host_port.substr(find_pos + 1));
+    uint16_t recv_port = atoi(recv_host_port.substr(find_pos + 1).c_str());
     if (recv_port < 18000 || recv_port > 18200) {
         perror("Receiver port number should be within 18000 and 18200! \n");
         exit(0);
@@ -205,13 +205,15 @@ int main(int argc, char **argv) {
                 curr_file_pos += PACKET_DATA_LEN;
             }
 
+            ////TODO: TIMEOUT
+
             // Send data packet
             memcpy(buff, node_to_send->packet, BUFFER_SIZE);
-            int show2 = *(int *) buff;
-            int show_len2 = *(int *) (buff + sizeof(int));
-            bool show_last2 = *(bool *) (buff + 2*sizeof(int));
-            unsigned short show_checksum = *(unsigned short *) (buff + 2*sizeof(int) + sizeof(bool));
-            cout << "SEQ NUM: " << curr_seq << " SEND SEQUENCE NUM:" << show2 << " LEN: "<< show_len2 << " LAST?: " << show_last2 << " checksum " << show_checksum <<endl;
+//            int show2 = *(int *) buff;
+//            int show_len2 = *(int *) (buff + sizeof(int));
+//            bool show_last2 = *(bool *) (buff + 2*sizeof(int));
+//            unsigned short show_checksum = *(unsigned short *) (buff + 2*sizeof(int) + sizeof(bool));
+//            cout << "SEQ NUM: " << curr_seq << " SEND SEQUENCE NUM:" << show2 << " LEN: "<< show_len2 << " LAST?: " << show_last2 << " checksum " << show_checksum <<endl;
             if (sendto(send_sock, buff, BUFFER_SIZE, 0, (struct sockaddr *) &sender_sin, sender_sin_len)>0) {
                 curr_seq += 1;
                 if (curr_seq == MAX_SEQ_LEN) curr_seq = 0;
