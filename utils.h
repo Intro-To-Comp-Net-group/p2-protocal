@@ -47,10 +47,13 @@ struct ack_packet {
 
 struct meta_data {
     int seq_num;
-    int file_len;
+    long file_len;
+    int file_dir_name_len;
     unsigned short checksum;
-    string file_dir;
-    string file_name;
+//    string file_dir;
+//    string file_name;
+
+    char * file_dir_name;
 };
 
 struct data_packet {
@@ -77,6 +80,7 @@ struct sender_window_node {
     int seq_num;
     bool is_last;
     char * packet;
+//    char packet[BUFFER_SIZE];
 };
 
 bool check_file_existence(string file_path) {

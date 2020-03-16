@@ -93,18 +93,17 @@ int main(int argc, char **argv) {
     fcntl(send_sock, F_SETFL, O_NONBLOCK);  // Non blocking mode
 
     char buff[BUFFER_SIZE];
-
+    int file_path_len = strlen(file_dir_name.c_str());
     // Start sending Meta Data
-    char meta_buff[PACKET_DATA_LEN + sizeof(int) + sizeof(bool)];
-    meta_data *meta_packet = (meta_data *) meta_buff;
-    meta_packet->seq_num = META_DATA_FLAG;
-    meta_packet->file_len = file_len;
-    meta_packet->file_name = file_name;
-    meta_packet->file_dir = file_dir;
-    meta_packet->checksum = get_checksum(meta_buff+ sizeof(int)*2 + sizeof(unsigned short), PACKET_DATA_LEN);
+    char meta_buff[file_path_len + 2 * sizeof(int) + sizeof(long) + sizeof(unsigned short)];
 
-    cout << "SEND META: SEQ: " << meta_packet->seq_num << " LEN: "<< meta_packet->file_len << " DIR: "
-         << meta_packet->file_dir << " Name: " << meta_packet->file_name << endl;
+    cout << " TOTAL FILE PATH LEN " << file_path_len <<endl;
+
+    *(int*) meta_buff = META_DATA_FLAG;
+    *(long*) (meta_buff + sizeof(int)) = file_len;
+    *(int*) (meta_buff + sizeof(int) + sizeof(long)) = file_path_len;
+    memcpy(meta_buff+2*sizeof(int)+sizeof(long)+sizeof(unsigned short), file_dir_name.c_str(), file_path_len);
+    *(unsigned short*) (meta_buff + 2 * sizeof(int) + sizeof(long)) = get_checksum(meta_buff+ sizeof(int) + sizeof(long) + sizeof(unsigned short), file_path_len);
 
     int curr_seq = 0;
     int last_ack_num = -1;
@@ -127,7 +126,7 @@ int main(int argc, char **argv) {
         if (meta_first_time || time_gap > TIMEOUT) {
             if (meta_first_time) meta_first_time = false;
             sendto(send_sock, meta_buff, sizeof(meta_buff), 0, (struct sockaddr *) &sender_sin, sender_sin_len);
-            cout << "SEND META DATA" << endl;
+//            cout << "SEND META DATA" << endl;
         }
         received_ack_len = recvfrom(send_sock, ack_buff, sizeof(ack_buff), MSG_DONTWAIT,(struct sockaddr*)&sender_sin, &sender_sin_len);
         if (received_ack_len > 0) {
@@ -142,7 +141,7 @@ int main(int argc, char **argv) {
     // Init window
     vector<sender_window_node *> window;
     for (int i = 0; i < WINDOW_SIZE; i++) {
-        sender_window_node * node = (sender_window_node *) malloc(sizeof(sender_window_node));  // Do we need it?
+        sender_window_node * node = (sender_window_node *) malloc(BUFFER_SIZE + sizeof(bool) + sizeof(int) + sizeof(bool));  // Do we need it?
         node->packet = (char *) malloc(BUFFER_SIZE * sizeof(char));
         node->is_last = false;
         node->is_received = false;

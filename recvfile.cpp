@@ -65,8 +65,9 @@ int main(int argc, char** argv) {
     int last_seq = -1;
     bool finish = false;
     ofstream outFile;
-    int file_len;
-    string file_dir, file_name;
+    long file_len;
+//    string file_dir, file_name;
+    char * file_dir, file_name;
 
     vector<receiver_window_node *> window;
     for (int i = 0; i < WINDOW_SIZE; i++) {
@@ -77,6 +78,7 @@ int main(int argc, char** argv) {
     }
 
     // Metadata stop and wait with timeout
+
     while (true) {
         memset(buff, 0, BUFFER_SIZE);
         int recv_len = recvfrom(server_sock, buff, BUFFER_SIZE, MSG_DONTWAIT, (struct sockaddr*) &client_sin, &client_len);
@@ -86,16 +88,24 @@ int main(int argc, char** argv) {
         int seq_num = *((int *) buff);
         if (seq_num == META_DATA_FLAG) {    // Meta Data
             cout << "Meta data received" <<endl;
-            meta_data * file_info = (meta_data *) buff;
-            file_len = file_info->file_len;
-            file_dir = file_info->file_dir;
-            file_name = file_info->file_name;
-            cout <<"FILE IS: " << file_dir + "/"  + file_name <<endl;
-
-            ////TODO checksum
-            unsigned short file_checksum = file_info->checksum;
+//            meta_data * file_info = (meta_data *) buff;
+//            file_len = file_info->file_len;
+//            file_dir = file_info->file_dir;
+//            file_name = file_info->file_name;
+//            cout <<"FILE IS: " << file_dir + "/"  + file_name <<endl;
+//
+//            ////TODO checksum
+//            unsigned short file_checksum = file_info->checksum;
 //            if (!check_checksum(buff)) continue;
-            if (!check_checksum(buff,true)) continue;
+//            if (!check_checksum(buff,true)) continue;
+
+
+            file_len = *(int *) (buff + sizeof(int));
+            int file_path_len = *(int*) (buff + sizeof(int) + sizeof(long));
+            char file_path[file_path_len];
+            memcpy(file_path, buff+2*sizeof(int)+sizeof(long)+sizeof(unsigned short),file_path_len);
+            cout <<"FILE IS: " << file_path <<endl;
+
 
             // generate ACK packet
             int ack_num = META_DATA_FLAG;
@@ -107,7 +117,8 @@ int main(int argc, char** argv) {
             sendto(server_sock, &meta_ack, sizeof(meta_ack), 0, (struct sockaddr*) &client_sin, client_len);
 
             // Read
-            outFile.open((file_dir + "/"  + file_name + ".recv").c_str(), ios::out | ios::binary);
+//            outFile.open((file_dir + "/"  + file_name + ".recv").c_str(), ios::out | ios::binary);
+            outFile.open(strcat(file_path,".recv"), ios::out | ios::binary);
             curr_seq = 0;
         } else {
             data_packet * received_packet = (data_packet *) buff;
@@ -117,7 +128,6 @@ int main(int argc, char** argv) {
             ////TODO checksum
             unsigned short received_checksum = received_packet->checksum;
             if (!check_checksum(buff,false)) continue;
-
 
             if (is_last_packet) last_seq = seq_num;
 
@@ -133,7 +143,6 @@ int main(int argc, char** argv) {
                 // IGNORE OUT OF BOUND
                 continue;
             } else {
-
                 // If the packet is received? (duplicate) Do not send ack back!
                 receiver_window_node *packet_in_window = window[seq_num % WINDOW_SIZE];
                 if (packet_in_window->isReceived) {
