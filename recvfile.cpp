@@ -124,68 +124,73 @@ int main(int argc, char** argv) {
             // Check if this is out of the range of window, ignore and do not send ack back!
             if (!inWindow(seq_num, curr_seq - 1)) {
                 cout << "[recv data] / IGNORED (out-of-window)" <<endl;
+                struct ack_packet send_ack;
+                send_ack.is_meta = false;
+                send_ack.ack = seq_num;
+                send_ack.finish = false;
+                cout << "OUT-OF-WINDOW, NOW SEND ACK IS: " << send_ack.ack << endl;
+                sendto(server_sock, &send_ack, sizeof(send_ack), 0, (struct sockaddr *) &client_sin, client_len);
                 // IGNORE OUT OF BOUND
                 continue;
-            }
-
-            // If the packet is received? (duplicate) Do not send ack back!
-            receiver_window_node * packet_in_window = window[seq_num % WINDOW_SIZE];
-            if (packet_in_window->isReceived) {
-                cout << "[recv data] / IGNORED (duplicate)" <<endl;
-                continue;
-            }
-            // Copy data into the node
-            packet_in_window->isReceived = true;
-            packet_in_window->seq_num = seq_num;
-
-
-
-            memset(packet_in_window->data, 0, PACKET_DATA_LEN * sizeof(char));
-
-            memcpy(packet_in_window->data,(buff+PACKET_HEADER_LEN) ,PACKET_DATA_LEN);
-            cout <<"RECEIVED SEQ_NUM: " << received_packet->seq_num << " PACKET LEN: "<< received_packet->packet_len <<endl;
-            // Update window
-            if (seq_num == curr_seq) {  // If matches, write that to file and move window
-                cout << "[recv data] / ACCEPTED (in-order)" << endl;
-                // write back and move
-
-                int curr_idx = curr_seq % WINDOW_SIZE;
-                receiver_window_node * currNode = window[curr_idx];
-                while (currNode->isReceived) {
-                    outFile << currNode->data << flush;
-                    if (curr_seq == last_seq) {
-                        finish = true;
-                        break;
-                    }
-                    curr_seq += 1;
-                    currNode->isReceived = false;
-                    curr_idx = (curr_idx + 1) % WINDOW_SIZE;
-                    currNode = window[curr_idx];
-                }
-            } else {    // If fall in window, just store it.
-                cout << "[recv data] / ACCEPTED (out-of-order)" << endl;
-            }
-            if (curr_seq == MAX_SEQ_LEN) {
-                curr_seq = 0;
-            }
-
-            // Send back ACK
-            struct ack_packet send_ack;
-            send_ack.is_meta = false;
-            send_ack.ack = seq_num;
-            if (finish) {   // Really NEED this one and this .finish attribute???
-                send_ack.finish = true;
             } else {
-                send_ack.finish = false;
-            }
-            cout << "SEND ACK IS: " << send_ack.ack <<endl;
-            sendto(server_sock, &send_ack, sizeof(send_ack), 0, (struct sockaddr*) &client_sin, client_len);
 
-            if (finish) {
-                cout << "[complete!]" <<endl;
-                break;
-            }
+                // If the packet is received? (duplicate) Do not send ack back!
+                receiver_window_node *packet_in_window = window[seq_num % WINDOW_SIZE];
+                if (packet_in_window->isReceived) {
+                    cout << "[recv data] / IGNORED (duplicate)" << endl;
+                    continue;
+                }
+                // Copy data into the node
+                packet_in_window->isReceived = true;
+                packet_in_window->seq_num = seq_num;
 
+                memset(packet_in_window->data, 0, PACKET_DATA_LEN * sizeof(char));
+
+                memcpy(packet_in_window->data, (buff + PACKET_HEADER_LEN), PACKET_DATA_LEN);
+                cout << "RECEIVED SEQ_NUM: " << received_packet->seq_num << " PACKET LEN: "
+                     << received_packet->packet_len << endl;
+                // Update window
+                if (seq_num == curr_seq) {  // If matches, write that to file and move window
+                    cout << "[recv data] / ACCEPTED (in-order)" << endl;
+                    // write back and move
+
+                    int curr_idx = curr_seq % WINDOW_SIZE;
+                    receiver_window_node *currNode = window[curr_idx];
+                    while (currNode->isReceived) {
+                        outFile << currNode->data << flush;
+                        if (curr_seq == last_seq) {
+                            finish = true;
+                            break;
+                        }
+                        curr_seq += 1;
+                        currNode->isReceived = false;
+                        curr_idx = (curr_idx + 1) % WINDOW_SIZE;
+                        currNode = window[curr_idx];
+                    }
+                } else {    // If fall in window, just store it.
+                    cout << "[recv data] / ACCEPTED (out-of-order)" << endl;
+                }
+                if (curr_seq == MAX_SEQ_LEN) {
+                    curr_seq = 0;
+                }
+
+                // Send back ACK
+                struct ack_packet send_ack;
+                send_ack.is_meta = false;
+                send_ack.ack = seq_num;
+                if (finish) {   // Really NEED this one and this .finish attribute???
+                    send_ack.finish = true;
+                } else {
+                    send_ack.finish = false;
+                }
+                cout << "SEND ACK IS: " << send_ack.ack << endl;
+                sendto(server_sock, &send_ack, sizeof(send_ack), 0, (struct sockaddr *) &client_sin, client_len);
+
+                if (finish) {
+                    cout << "[complete!]" << endl;
+                    break;
+                }
+            }
         }
     }
 
