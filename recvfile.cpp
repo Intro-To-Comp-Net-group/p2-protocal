@@ -94,7 +94,7 @@ int main(int argc, char **argv) {
             file_len = *(int *) (buff + sizeof(int));
             int file_path_len = *(int *) (buff + 2 * sizeof(int));
 
-            if (!check_meta_checksum(buff,file_path_len)) {  // OR PUT IT IN FRONT AND USE MAX_META_LEN???
+            if (!check_meta_checksum(buff, file_path_len)) {  // OR PUT IT IN FRONT AND USE MAX_META_LEN???
                 cout << "[recv data] / IGNORED (corrupted packet)" << endl;
                 continue;
             }
@@ -105,12 +105,15 @@ int main(int argc, char **argv) {
                  << file_path << ".recv" << endl;
 
             // create an ACK packet
-            struct ack_packet meta_ack;
-            meta_ack.is_meta = true;
-            meta_ack.ack = META_DATA_FLAG;
-//            meta_ack.finish = false;
+            *(int *) ack_buff = META_DATA_FLAG;    // Ack num
+            *(bool *) (ack_buff + sizeof(int)) = true; // is_meta
+            *(unsigned short *) (ack_buff + sizeof(int) + sizeof(bool)) = get_checksum(ack_buff,
+                                                                                       sizeof(int));   // Checksum
 
-            sendto(server_sock, &meta_ack, sizeof(meta_ack), 0, (struct sockaddr *) &client_sin, client_len);
+            cout << "META DATA! SEND META ACK IS: " << *(int *) ack_buff << " AND ACK CHECKSUM: "
+                 << *(unsigned short *) (ack_buff + sizeof(int) + sizeof(bool)) << endl;
+
+            sendto(server_sock, &ack_buff, ACK_BUFF_LEN, 0, (struct sockaddr *) &client_sin, client_len);
             // Read
             outFile.open(strcat(file_path, ".recv"), ios::out | ios::binary);
             curr_seq = 0;
@@ -133,20 +136,12 @@ int main(int argc, char **argv) {
                 cout << "[recv data] / IGNORED (out-of-window)" << endl;
 
                 // create an ACK packet
-//                struct ack_packet send_ack;
-//                send_ack.is_meta = false;
-//                send_ack.ack = seq_num;
-////                send_ack.finish = false;
-////                send_ack.checksum = get_checksum(send_ack, sizeof(int));
-//                cout << "OUT-OF-WINDOW, NOW SEND ACK IS: " << send_ack.ack << endl;
-//                sendto(server_sock, &send_ack, sizeof(send_ack), 0, (struct sockaddr *) &client_sin, client_len);
-
                 *(int *) ack_buff = seq_num;    // Ack num
                 *(bool *) (ack_buff + sizeof(int)) = false; // is_meta
-                *(unsigned short *) (ack_buff + sizeof(int) + sizeof(bool)) = get_checksum(ack_buff,
-                                                                                           sizeof(int));   // Checksum
+                *(unsigned short *) (ack_buff + sizeof(int) + sizeof(bool)) = get_checksum(ack_buff, sizeof(int));   // Checksum
 
-                cout << "OUT-OF-WINDOW, NOW SEND ACK IS: " << *(int *) ack_buff << endl;
+                cout << "OUT-OF-WINDOW, NOW SEND ACK IS: " << *(int *) ack_buff << " AND ACK CHECKSUM: "
+                     << *(unsigned short *) (ack_buff + sizeof(int) + sizeof(bool)) << endl;
                 sendto(server_sock, &ack_buff, ACK_BUFF_LEN, 0, (struct sockaddr *) &client_sin, client_len);
                 // IGNORE OUT OF BOUND
                 continue;
@@ -209,7 +204,8 @@ int main(int argc, char **argv) {
                 *(bool *) (ack_buff + sizeof(int)) = false; // is_meta
                 *(unsigned short *) (ack_buff + sizeof(int) + sizeof(bool)) = get_checksum(ack_buff,
                                                                                            sizeof(int));   // Checksum
-                cout << "SEND ACK IS: " << *(int *) ack_buff << endl;
+                cout << "SEND ACK IS: " << *(int *) ack_buff << " AND ACK CHECKSUM: "
+                     << *(unsigned short *) (ack_buff + sizeof(int) + sizeof(bool)) << endl;
                 sendto(server_sock, ack_buff, ACK_BUFF_LEN, 0, (struct sockaddr *) &client_sin, client_len);
 
                 if (finish) {

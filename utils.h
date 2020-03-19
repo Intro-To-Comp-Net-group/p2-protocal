@@ -78,7 +78,6 @@ struct sender_window_node {
     int seq_num;
     bool is_last;
     char *packet;
-//    char packet[BUFFER_SIZE];
 };
 
 bool check_file_existence(string file_path) {
@@ -128,23 +127,25 @@ unsigned short get_checksum(char *addr, int count) {
         count -= 2;
     }
     if (count > 0) sum += *addr;  //=1,说明count为奇数
-    while (sum >> 16) {//当和的高16位不为0，把高16位作为校验和的一部分求和，
+    while (sum >> 16) { //当和的高16位不为0，把高16位作为校验和的一部分求和，
         sum = (sum & 0xffff) + (sum >> 16);
     }
+    cout << "Here we get checksum: " << (unsigned short) ~sum <<endl;
     return (unsigned short) ~sum;
 }
 
 bool check_ack_checksum(char *ack_buff) {
     unsigned short received_ack_checksum = *(unsigned short *) (ack_buff + sizeof(int) + sizeof(bool));
     unsigned short cal_ack_checksum = get_checksum(ack_buff, sizeof(int));
-//    return received_ack_checksum == cal_ack_checksum;
-    return true;
+    cout << "Received ack checksum is: " << received_ack_checksum << ", Calculated Checksum is: " << cal_ack_checksum << endl;
+    return received_ack_checksum == cal_ack_checksum;
+//    return true;
 }
 
 bool check_checksum(char *received_buff) {
     unsigned short recv_checksum = *(unsigned short *) (received_buff + 2 * sizeof(int) + sizeof(bool));
     unsigned short cal_checksum = get_checksum(received_buff + PACKET_HEADER_LEN, PACKET_DATA_LEN);
-    cout << "Received meta checksum is: " << recv_checksum << ", Calculated Checksum is: " << cal_checksum << endl;
+    cout << "Received packet checksum is: " << recv_checksum << ", Calculated Checksum is: " << cal_checksum << endl;
     return recv_checksum == cal_checksum;
 //    return true;
 }
