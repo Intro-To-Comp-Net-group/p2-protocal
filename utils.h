@@ -21,14 +21,15 @@
 
 using namespace std;
 
-#define PACKET_DATA_LEN 1024*1024 / WINDOW_SIZE
+#define PACKET_DATA_LEN 1024 * 8
 #define PACKET_HEADER_LEN 2*sizeof(int) + sizeof(bool) + sizeof(unsigned short)
 #define BUFFER_SIZE PACKET_DATA_LEN + PACKET_HEADER_LEN
+#define MAX_FILE_PATH_LEN 64
 
-#define WINDOW_SIZE 512
+#define WINDOW_SIZE 48
 #define MAX_SEQ_LEN 2*WINDOW_SIZE
 
-#define ACK_BUFF_LEN sizeof(int)+sizeof(bool)*2
+#define ACK_BUFF_LEN sizeof(int)+sizeof(bool) + sizeof(unsigned short)
 
 #define META_DATA_FLAG 65535
 
@@ -40,20 +41,17 @@ using namespace std;
 struct ack_packet {
     int ack;
     bool is_meta;
-    bool finish;
+    unsigned short checksum;
 //    uint32_t send_sec;
 //    uint32_t send_usec;
 };
 
 struct meta_data {
     int seq_num;
-    long file_len;
+    int file_len;
     int file_dir_name_len;
     unsigned short checksum;
-//    string file_dir;
-//    string file_name;
-
-    char * file_dir_name;
+    char *file_dir_name;
 };
 
 struct data_packet {
@@ -63,7 +61,7 @@ struct data_packet {
     unsigned short checksum;
 //    time_t send_time;
 //    time_t recv_time;
-    char * data;
+    char *data;
 };
 
 // Wrap packet's data and receive
@@ -71,7 +69,7 @@ struct receiver_window_node {
     bool isReceived;
     int seq_num;
     bool is_last;   // NEWADD
-    char * data;
+    char *data;
 };
 
 // Wrap packet and send
@@ -79,7 +77,7 @@ struct sender_window_node {
     bool is_received;
     int seq_num;
     bool is_last;
-    char * packet;
+    char *packet;
 //    char packet[BUFFER_SIZE];
 };
 
@@ -92,10 +90,11 @@ bool check_file_existence(string file_path) {
     }
 }
 
-void update_window(vector<receiver_window_node *> &window, bool *finish, int * curr_ack, int * last_ack, ofstream &out_file) {
+void
+update_window(vector<receiver_window_node *> &window, bool *finish, int *curr_ack, int *last_ack, ofstream &out_file) {
     // write data back to file, update curr_ack, update window
     int curr_idx = *curr_ack % WINDOW_SIZE;
-    receiver_window_node * currNode = window[curr_idx];
+    receiver_window_node *currNode = window[curr_idx];
     bool hasNext = currNode->isReceived;
     while (hasNext) {
         out_file << currNode->data << flush;
@@ -121,24 +120,42 @@ bool inWindow(int input_num, int last_action_num) {
     }
 }
 
-unsigned short get_checksum(char * addr, int size) {
-    return 1;
-}
-
-bool check_checksum(char * received_buff, bool is_meta) {
-    unsigned short real_checksum;
-    unsigned short calculated_checksum;
-    if (!is_meta) {
-        real_checksum = *(unsigned short*) (received_buff + 2* sizeof(int) + sizeof(bool));
-//        unsigned short calculated_checksum = get_checksum(received_buff + PACKET_HEADER_LEN, PACKET_DATA_LEN);
-        calculated_checksum = get_checksum(received_buff + PACKET_HEADER_LEN, PACKET_DATA_LEN);
-    } else {
-        real_checksum = *(unsigned short*) (received_buff + 2 * sizeof(int));
-        calculated_checksum = get_checksum(received_buff+sizeof(int)*2, PACKET_DATA_LEN);
+unsigned short get_checksum(char *addr, int count) {
+    int sum = 0;
+    while (count > 1) {
+        sum = sum + *(unsigned short *) addr;
+        addr += 2;
+        count -= 2;
     }
-    return real_checksum == calculated_checksum;
+    if (count > 0) sum += *addr;  //=1,说明count为奇数
+    while (sum >> 16) {//当和的高16位不为0，把高16位作为校验和的一部分求和，
+        sum = (sum & 0xffff) + (sum >> 16);
+    }
+    return (unsigned short) ~sum;
 }
 
+bool check_ack_checksum(char *ack_buff) {
+    unsigned short received_ack_checksum = *(unsigned short *) (ack_buff + sizeof(int) + sizeof(bool));
+    unsigned short cal_ack_checksum = get_checksum(ack_buff, sizeof(int));
+//    return received_ack_checksum == cal_ack_checksum;
+    return true;
+}
+
+bool check_checksum(char *received_buff) {
+    unsigned short recv_checksum = *(unsigned short *) (received_buff + 2 * sizeof(int) + sizeof(bool));
+    unsigned short cal_checksum = get_checksum(received_buff + PACKET_HEADER_LEN, PACKET_DATA_LEN);
+    cout << "Received meta checksum is: " << recv_checksum << ", Calculated Checksum is: " << cal_checksum << endl;
+    return recv_checksum == cal_checksum;
+//    return true;
+}
+
+bool check_meta_checksum(char *received_buff, int file_path_len) {
+    unsigned short recv_checksum = *(unsigned short *) (received_buff + 3 * sizeof(int));
+    unsigned short cal_checksum = get_checksum(received_buff + 3 * sizeof(int) + sizeof(unsigned short), file_path_len);
+    cout << "Received meta checksum is: " << recv_checksum << ", Calculated Checksum is: " << cal_checksum << endl;
+    return recv_checksum == cal_checksum;
+//    return true;
+}
 
 
 #endif //PROJECT2_UTILS_H
