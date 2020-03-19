@@ -156,6 +156,7 @@ int main(int argc, char **argv) {
     }
 
     bool isAllSent = false;
+    bool isAllReceived = false;
 
     while (true) {
         // RECEIVE
@@ -171,14 +172,27 @@ int main(int argc, char **argv) {
             cout << "RECEIVED ACK PACKET " << ack << " LAST ACK: " << last_ack_num + 1 << endl;
 
             if (inWindow(ack, last_ack_num)) {
-                if (ack == last_ack_num + 1) {
+//                if (ack == last_ack_num + 1) {
+//                    last_ack_num += 1;
+//                    if (last_ack_num == MAX_SEQ_LEN - 1) {
+//                        last_ack_num = -1;
+//                    }
+//                }
+
+
+                sender_window_node * node = window[ack % WINDOW_SIZE];
+                node->is_received = true;
+                while (window[(last_ack_num + 1) % WINDOW_SIZE]->is_received && inWindow(ack, last_ack_num)) {
                     last_ack_num += 1;
+                    cout << "LAST ACK NUMBER IS: " << last_ack_num <<endl;
                     if (last_ack_num == MAX_SEQ_LEN - 1) {
                         last_ack_num = -1;
                     }
                 }
+
+                
             }
-            if (isAllSent && ack == last_ack_num) break;
+            if (isAllSent && ack == last_ack_num) break;    // 现在是所有send完就停，但应该是收到最后一个ack才能停
         }
 
         // SEND
@@ -191,17 +205,18 @@ int main(int argc, char **argv) {
             int pending_len = file_len - curr_file_pos;
             cout << "FILE LEN: " << file_len << " CURRENT POSITION: " << curr_file_pos << " PENDING: " << pending_len
                  << endl;
-            // Create data packet
+            // Create packet
             if (pending_len <= PACKET_DATA_LEN) {
                 node_to_send->is_last = true;
                 node_to_send->seq_num = curr_seq;
-                // Last node
+
                 *(int *) (node_to_send->packet) = curr_seq;   // Seq_num
                 *(int *) (node_to_send->packet + sizeof(int)) = pending_len;   // Packet_len
                 *(bool *) (node_to_send->packet + 2 * sizeof(int)) = true;   // is_last_packet
                 inFile.read(node_to_send->packet + PACKET_HEADER_LEN, pending_len);
                 *(unsigned short *) (node_to_send->packet + 2 * sizeof(int) + sizeof(bool)) =
                         get_checksum(node_to_send->packet + PACKET_HEADER_LEN, pending_len);
+
                 curr_file_pos += pending_len;
                 if (curr_file_pos == file_len) {
                     isAllSent = true;
@@ -209,13 +224,14 @@ int main(int argc, char **argv) {
             } else {
                 node_to_send->is_last = false;
                 node_to_send->seq_num = curr_seq;
-                // Internal Node
+
                 *(int *) (node_to_send->packet) = curr_seq;   // Seq_num
                 *(int *) (node_to_send->packet + sizeof(int)) = PACKET_DATA_LEN;   // Packet_len
                 *(bool *) (node_to_send->packet + 2 * sizeof(int)) = false;   // is_last_packet
                 inFile.read(node_to_send->packet + PACKET_HEADER_LEN, PACKET_DATA_LEN);
                 *(unsigned short *) (node_to_send->packet + 2 * sizeof(int) + sizeof(bool)) =
                         get_checksum(node_to_send->packet + PACKET_HEADER_LEN, PACKET_DATA_LEN);
+
                 isAllSent = false;
                 curr_file_pos += PACKET_DATA_LEN;
             }
@@ -237,9 +253,7 @@ int main(int argc, char **argv) {
                 ////TODO: TIMEOUT
                 curr_seq += 1;
                 if (curr_seq == MAX_SEQ_LEN) curr_seq = 0;
-            } else {
-                cout << "SEND FAIL " << endl;
-            }
+            } else cout << "SEND FAIL " << endl;
 
         }
     }
