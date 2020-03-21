@@ -14,6 +14,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
+#include <time.h>
 #include <vector>
 #include <string>
 #include <iostream>
@@ -21,27 +22,35 @@
 
 using namespace std;
 
+#define WINDOW_SIZE 48
+#define MAX_SEQ_LEN 2*WINDOW_SIZE
+
 #define PACKET_DATA_LEN 1024 * 8
 #define PACKET_HEADER_LEN 2*sizeof(int) + sizeof(bool) + sizeof(unsigned short)
 #define BUFFER_SIZE PACKET_DATA_LEN + PACKET_HEADER_LEN
 #define MAX_FILE_PATH_LEN 64
 
-#define WINDOW_SIZE 48
-#define MAX_SEQ_LEN 2*WINDOW_SIZE
-
-#define ACK_BUFF_LEN sizeof(int)+sizeof(bool) + sizeof(unsigned short)
+#define ACK_BUFF_LEN sizeof(int)+sizeof(bool) + sizeof(unsigned short) + sizeof(bool)
 
 #define META_DATA_FLAG 65535
 
 
-#define TIMEOUT 5000
+#define TIMEOUT 100000
 using namespace std;
+
+bool get_random() {
+//    srand(time(NULL));
+    int v = rand() % 100 + 1;
+    return v < 70;
+}
+
 
 
 struct ack_packet {
     int ack;
     bool is_meta;
     unsigned short checksum;
+    bool is_last;
 //    uint32_t send_sec;
 //    uint32_t send_usec;
 };
@@ -75,9 +84,11 @@ struct receiver_window_node {
 // Wrap packet and send
 struct sender_window_node {
     bool is_received;
+    bool is_send;
     int seq_num;
     bool is_last;
     char *packet;
+    struct timeval send_time;
 };
 
 bool check_file_existence(string file_path) {
@@ -92,7 +103,7 @@ bool check_file_existence(string file_path) {
 void
 update_window(vector<receiver_window_node *> &window, bool *finish, int *curr_ack, int *last_ack, ofstream &out_file) {
     // write data back to file, update curr_ack, update window
-    int curr_idx = *curr_ack % WINDOW_SIZE;
+    int curr_idx = *curr_ack % (WINDOW_SIZE);
     receiver_window_node *currNode = window[curr_idx];
     bool hasNext = currNode->isReceived;
     while (hasNext) {
@@ -102,7 +113,7 @@ update_window(vector<receiver_window_node *> &window, bool *finish, int *curr_ac
             break;
         }
         *curr_ack += 1;
-        curr_idx = (curr_idx + 1) % WINDOW_SIZE;
+        curr_idx = (curr_idx + 1) % (WINDOW_SIZE);
         currNode = window[curr_idx];
         hasNext = currNode->isReceived;
     }
@@ -114,7 +125,7 @@ bool inWindow(int input_num, int last_action_num) {
         return input_num >= next_num && input_num < next_num + WINDOW_SIZE;
     } else {
         bool in_left = input_num >= next_num && input_num < next_num + WINDOW_SIZE;
-        bool in_right = input_num >= 0 && input_num < (next_num + WINDOW_SIZE) % MAX_SEQ_LEN;
+        bool in_right = input_num >= 0 && input_num < (next_num + WINDOW_SIZE) % (MAX_SEQ_LEN);
         return in_left || in_right;
     }
 }
@@ -130,14 +141,14 @@ unsigned short get_checksum(char *addr, int count) {
     while (sum >> 16) { //当和的高16位不为0，把高16位作为校验和的一部分求和，
         sum = (sum & 0xffff) + (sum >> 16);
     }
-    cout << "Here we get checksum: " << (unsigned short) ~sum <<endl;
+//    cout << "Here we get checksum: " << (unsigned short) ~sum <<endl;
     return (unsigned short) ~sum;
 }
 
 bool check_ack_checksum(char *ack_buff) {
     unsigned short received_ack_checksum = *(unsigned short *) (ack_buff + sizeof(int) + sizeof(bool));
     unsigned short cal_ack_checksum = get_checksum(ack_buff, sizeof(int));
-    cout << "Received ack checksum is: " << received_ack_checksum << ", Calculated Checksum is: " << cal_ack_checksum << endl;
+//    cout << "Received ack checksum is: " << received_ack_checksum << ", Calculated Checksum is: " << cal_ack_checksum << endl;
     return received_ack_checksum == cal_ack_checksum;
 //    return true;
 }
@@ -145,7 +156,7 @@ bool check_ack_checksum(char *ack_buff) {
 bool check_checksum(char *received_buff) {
     unsigned short recv_checksum = *(unsigned short *) (received_buff + 2 * sizeof(int) + sizeof(bool));
     unsigned short cal_checksum = get_checksum(received_buff + PACKET_HEADER_LEN, PACKET_DATA_LEN);
-    cout << "Received packet checksum is: " << recv_checksum << ", Calculated Checksum is: " << cal_checksum << endl;
+//    cout << "Received packet checksum is: " << recv_checksum << ", Calculated Checksum is: " << cal_checksum << endl;
     return recv_checksum == cal_checksum;
 //    return true;
 }
@@ -153,7 +164,7 @@ bool check_checksum(char *received_buff) {
 bool check_meta_checksum(char *received_buff, int file_path_len) {
     unsigned short recv_checksum = *(unsigned short *) (received_buff + 3 * sizeof(int));
     unsigned short cal_checksum = get_checksum(received_buff + 3 * sizeof(int) + sizeof(unsigned short), file_path_len);
-    cout << "Received meta checksum is: " << recv_checksum << ", Calculated Checksum is: " << cal_checksum << endl;
+//    cout << "Received meta checksum is: " << recv_checksum << ", Calculated Checksum is: " << cal_checksum << endl;
     return recv_checksum == cal_checksum;
 //    return true;
 }

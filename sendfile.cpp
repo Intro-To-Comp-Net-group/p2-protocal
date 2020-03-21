@@ -15,6 +15,9 @@
 #include <vector>
 #include "utils.h"
 
+#include <chrono>
+#include <thread>
+
 using namespace std;
 
 int main(int argc, char **argv) {
@@ -129,6 +132,7 @@ int main(int argc, char **argv) {
         if (meta_first_time && time_gap > TIMEOUT) {
             if (meta_first_time) meta_first_time = false;
             sendto(send_sock, meta_buff, sizeof(meta_buff), 0, (struct sockaddr *) &sender_sin, sender_sin_len);
+
         }
         received_ack_len = recvfrom(send_sock, ack_buff, sizeof(ack_buff), MSG_DONTWAIT,
                                     (struct sockaddr *) &sender_sin, &sender_sin_len);
@@ -152,11 +156,18 @@ int main(int argc, char **argv) {
         node->packet = (char *) malloc(BUFFER_SIZE * sizeof(char));
         node->is_last = false;
         node->is_received = false;
+        gettimeofday(&node->send_time, NULL);
         window.push_back(node);
     }
 
     bool isAllSent = false;
-    bool isAllReceived = false;
+    bool lastReceived = false;
+    int LAST_ACK_FLAG = -1;
+
+    int send_count = 0;
+    int recv_count = 0;
+
+    bool endFlag = false;
 
     while (true) {
         // RECEIVE
@@ -165,14 +176,28 @@ int main(int argc, char **argv) {
         if (received_ack_len > 0) {
             // Extract info of received ACK_packet
             int ack = *(int *) ack_buff;
+            bool received_last_ack = *(bool *) (ack_buff + sizeof(int) + sizeof(bool) + sizeof(unsigned short));
+
+            if (received_last_ack) {
+                lastReceived = true;
+                LAST_ACK_FLAG = ack;
+            }
+
             if (!check_ack_checksum(ack_buff)) {
-                cout << "Checksum Not Match! Discard! " << endl;
                 continue;
             }
-            cout << "RECEIVED ACK PACKET " << ack << " LAST ACK: " << last_ack_num + 1 << endl;
 
             if (inWindow(ack, last_ack_num)) {
-//                if (ack == last_ack_num + 1) {
+                recv_count += 1;
+
+//                cout << "RECEIVED ACK " << ack <<" FALL IN WINDOW!!!!!!!!" << endl;
+                sender_window_node * node = window[ack % (WINDOW_SIZE)];
+                node->is_received = true;
+
+                int tmp_q_head = last_ack_num;
+//                while (window[(last_ack_num + 1) % (WINDOW_SIZE)]->is_received && inWindow(ack, tmp_q_head)) {
+//                    window[(last_ack_num + 1) % (WINDOW_SIZE)]->is_received = false;
+//                    window[(last_ack_num + 1) % (WINDOW_SIZE)]->is_send = false;
 //                    last_ack_num += 1;
 //                    if (last_ack_num == MAX_SEQ_LEN - 1) {
 //                        last_ack_num = -1;
@@ -180,42 +205,83 @@ int main(int argc, char **argv) {
 //                }
 
 
-                sender_window_node * node = window[ack % WINDOW_SIZE];
-                node->is_received = true;
-                while (window[(last_ack_num + 1) % WINDOW_SIZE]->is_received && inWindow(ack, last_ack_num)) {
+                while (window[(last_ack_num + 1) % (WINDOW_SIZE)]->is_received && inWindow(ack, tmp_q_head)) {
+                    window[(last_ack_num + 1) % (WINDOW_SIZE)]->is_received = false;
+                    window[(last_ack_num + 1) % (WINDOW_SIZE)]->is_send = false;
                     last_ack_num += 1;
-                    cout << "LAST ACK NUMBER IS: " << last_ack_num <<endl;
                     if (last_ack_num == MAX_SEQ_LEN - 1) {
                         last_ack_num = -1;
                     }
-                }
 
-                
+                    if (isAllSent && lastReceived) {
+                        if ((LAST_ACK_FLAG == MAX_SEQ_LEN - 1 && last_ack_num == -1) ||
+                            (LAST_ACK_FLAG == last_ack_num)) {
+                            endFlag = true;
+                            break;
+                        }
+                    }
+                }
+                if (endFlag) break;
+
             }
-            if (isAllSent && ack == last_ack_num) break;    // 现在是所有send完就停，但应该是收到最后一个ack才能停
+            cout << "RECEIVED ACK PACKET " << ack << " head of queue: " << last_ack_num + 1 << " isallsent? " << isAllSent << " lastACK received? " << received_last_ack << endl;
+//            if (isAllSent && received_last_ack) {
+//                cout << endl;
+//                cout << LAST_ACK_FLAG << " AND " << last_ack_num <<endl;
+//                cout << endl;
+//                if ((LAST_ACK_FLAG == MAX_SEQ_LEN - 1 && last_ack_num == -1) ||
+//                    (LAST_ACK_FLAG == last_ack_num))
+//                    break;
+//            }
+
+
+
+
         }
 
         // SEND
         // TODO TIMEOUT RESEND
+        // find the head of the send window
+
+        // find the head of the send window
+        struct timeval cur_time;
+        gettimeofday(&cur_time, NULL);
+        for(int i = 0; i < WINDOW_SIZE; i++){
+            if(window[i]->is_received == false && window[i]->is_send){
+                int time_diff = (cur_time.tv_sec - window[i]->send_time.tv_sec) * 1000000 + (cur_time.tv_usec - window[i] -> send_time.tv_usec);
+                if (time_diff > TIMEOUT) {
+
+                    if (sendto(send_sock, window[i]->packet, BUFFER_SIZE, 0, (struct sockaddr *) &sender_sin,
+                               sender_sin_len) > 0) {
+                        cout << "Resend: seq_num: " << *(int *)window[i]->packet <<endl;
+                    } else {
+                        cout << "SEND FAIL " << endl;
+                    }
+                }
+            }
+        }
 
         sender_window_node *node_to_send;
         if (!isAllSent && inWindow(curr_seq, last_ack_num)) {
-            node_to_send = window[curr_seq % WINDOW_SIZE];
+            send_count += 1;
+
+            node_to_send = window[curr_seq % (WINDOW_SIZE)];
             memset(node_to_send->packet, 0, BUFFER_SIZE * sizeof(char));
             int pending_len = file_len - curr_file_pos;
-            cout << "FILE LEN: " << file_len << " CURRENT POSITION: " << curr_file_pos << " PENDING: " << pending_len
-                 << endl;
+//            cout << "FILE LEN: " << file_len << " CURRENT POSITION: " << curr_file_pos << " PENDING: " << pending_len<< endl;
             // Create packet
             if (pending_len <= PACKET_DATA_LEN) {
                 node_to_send->is_last = true;
                 node_to_send->seq_num = curr_seq;
 
-                *(int *) (node_to_send->packet) = curr_seq;   // Seq_num
+                *(int *) (node_to_send->packet) = curr_seq;   // Seq num
                 *(int *) (node_to_send->packet + sizeof(int)) = pending_len;   // Packet_len
                 *(bool *) (node_to_send->packet + 2 * sizeof(int)) = true;   // is_last_packet
                 inFile.read(node_to_send->packet + PACKET_HEADER_LEN, pending_len);
                 *(unsigned short *) (node_to_send->packet + 2 * sizeof(int) + sizeof(bool)) =
                         get_checksum(node_to_send->packet + PACKET_HEADER_LEN, pending_len);
+
+                gettimeofday(&node_to_send->send_time, NULL);
 
                 curr_file_pos += pending_len;
                 if (curr_file_pos == file_len) {
@@ -225,12 +291,15 @@ int main(int argc, char **argv) {
                 node_to_send->is_last = false;
                 node_to_send->seq_num = curr_seq;
 
-                *(int *) (node_to_send->packet) = curr_seq;   // Seq_num
+                *(int *) (node_to_send->packet) = curr_seq;   // Seq num
                 *(int *) (node_to_send->packet + sizeof(int)) = PACKET_DATA_LEN;   // Packet_len
                 *(bool *) (node_to_send->packet + 2 * sizeof(int)) = false;   // is_last_packet
                 inFile.read(node_to_send->packet + PACKET_HEADER_LEN, PACKET_DATA_LEN);
                 *(unsigned short *) (node_to_send->packet + 2 * sizeof(int) + sizeof(bool)) =
                         get_checksum(node_to_send->packet + PACKET_HEADER_LEN, PACKET_DATA_LEN);
+
+
+                gettimeofday(&node_to_send->send_time, NULL);
 
                 isAllSent = false;
                 curr_file_pos += PACKET_DATA_LEN;
@@ -246,20 +315,28 @@ int main(int argc, char **argv) {
             bool show_last2 = *(bool *) (node_to_send->packet + 2 * sizeof(int));
             unsigned short show_checksum = *(unsigned short *) (node_to_send->packet + 2 * sizeof(int) + sizeof(bool));
             cout << "SEQ NUM: " << curr_seq << " SEND SEQUENCE NUM:" << show2 << " LEN: " << show_len2 << " LAST?: "
-                 << show_last2 << " checksum " << show_checksum << endl;
+                 << show_last2 << endl;
 
             if (sendto(send_sock, node_to_send->packet, BUFFER_SIZE, 0, (struct sockaddr *) &sender_sin,
                        sender_sin_len) > 0) {
-                ////TODO: TIMEOUT
+//                curr_seq = (curr_seq + 1) % (MAX_SEQ_LEN);
+                node_to_send->is_send = true;   // ADD
+
                 curr_seq += 1;
-                if (curr_seq == MAX_SEQ_LEN) curr_seq = 0;
+                if (curr_seq == MAX_SEQ_LEN) {
+                    curr_seq = 0;
+                }
             } else cout << "SEND FAIL " << endl;
 
         }
     }
 
     // TODO DEAL WITH THE ENDING
+    cout << "Send " << send_count << " data packet and receive: " << recv_count<<" ack" <<endl;
+//    char end_buff[];
 
+
+    cout << "[send complete!]" << endl;
     inFile.close();
     close(send_sock);
     for (int i = 0; i < WINDOW_SIZE; i++) {
