@@ -22,10 +22,10 @@
 
 using namespace std;
 
-#define WINDOW_SIZE 48
+#define WINDOW_SIZE 8//48
 #define MAX_SEQ_LEN 2*WINDOW_SIZE
 
-#define PACKET_DATA_LEN 1024 * 8
+#define PACKET_DATA_LEN 1024
 #define PACKET_HEADER_LEN 2*sizeof(int) + sizeof(bool) + sizeof(unsigned short)
 #define BUFFER_SIZE PACKET_DATA_LEN + PACKET_HEADER_LEN
 #define MAX_FILE_PATH_LEN 64

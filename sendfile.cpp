@@ -15,8 +15,8 @@
 #include <vector>
 #include "utils.h"
 
-#include <chrono>
-#include <thread>
+//#include <chrono>
+//#include <thread>
 
 using namespace std;
 
@@ -118,21 +118,20 @@ int main(int argc, char **argv) {
     int time_gap;
     bool meta_first_time = true;
 
-    gettimeofday(&timestamp, NULL);
-    uint32_t start_sec = timestamp.tv_sec;
-    uint32_t start_usec = timestamp.tv_usec;
+    gettimeofday(&meta_time, NULL);
 
 //    char buff[BUFFER_SIZE];   // NEED IT?
     char ack_buff[ACK_BUFF_LEN];
     int received_ack_len;
     while (true) {
         // TODO Timeout
-        gettimeofday(&meta_time, NULL);
-        time_gap = (meta_time.tv_sec - start_sec) * 1000000 + (meta_time.tv_usec - start_usec);
+        gettimeofday(&timestamp, NULL);
+        time_gap = (timestamp.tv_sec - meta_time.tv_sec) * 1000000 + (timestamp.tv_usec - meta_time.tv_usec);
         if (meta_first_time && time_gap > TIMEOUT) {
             if (meta_first_time) meta_first_time = false;
             sendto(send_sock, meta_buff, sizeof(meta_buff), 0, (struct sockaddr *) &sender_sin, sender_sin_len);
-
+            cout << "META DATA SENT" << endl;
+            gettimeofday(&meta_time, NULL);
         }
         received_ack_len = recvfrom(send_sock, ack_buff, sizeof(ack_buff), MSG_DONTWAIT,
                                     (struct sockaddr *) &sender_sin, &sender_sin_len);
@@ -142,8 +141,10 @@ int main(int argc, char **argv) {
                 cout << "META ACK RECEIVED" << endl;
                 break;
             } else {
-                // Fast resend
+                // Fast re-send
                 sendto(send_sock, meta_buff, sizeof(meta_buff), 0, (struct sockaddr *) &sender_sin, sender_sin_len);
+                cout << "META DATA RESEND" << endl;
+                gettimeofday(&meta_time, NULL);
             }
         }
     }
@@ -190,21 +191,10 @@ int main(int argc, char **argv) {
             if (inWindow(ack, last_ack_num)) {
                 recv_count += 1;
 
-//                cout << "RECEIVED ACK " << ack <<" FALL IN WINDOW!!!!!!!!" << endl;
-                sender_window_node * node = window[ack % (WINDOW_SIZE)];
+                sender_window_node *node = window[ack % (WINDOW_SIZE)];
                 node->is_received = true;
 
                 int tmp_q_head = last_ack_num;
-//                while (window[(last_ack_num + 1) % (WINDOW_SIZE)]->is_received && inWindow(ack, tmp_q_head)) {
-//                    window[(last_ack_num + 1) % (WINDOW_SIZE)]->is_received = false;
-//                    window[(last_ack_num + 1) % (WINDOW_SIZE)]->is_send = false;
-//                    last_ack_num += 1;
-//                    if (last_ack_num == MAX_SEQ_LEN - 1) {
-//                        last_ack_num = -1;
-//                    }
-//                }
-
-
                 while (window[(last_ack_num + 1) % (WINDOW_SIZE)]->is_received && inWindow(ack, tmp_q_head)) {
                     window[(last_ack_num + 1) % (WINDOW_SIZE)]->is_received = false;
                     window[(last_ack_num + 1) % (WINDOW_SIZE)]->is_send = false;
@@ -221,10 +211,13 @@ int main(int argc, char **argv) {
                         }
                     }
                 }
-                if (endFlag) break;
+                if (endFlag) {
+                    break;
+                }
 
             }
-            cout << "RECEIVED ACK PACKET " << ack << " head of queue: " << last_ack_num + 1 << " isallsent? " << isAllSent << " lastACK received? " << received_last_ack << endl;
+            cout << "RECEIVED ACK PACKET " << ack << " head of queue: " << last_ack_num + 1 << " isallsent? "
+                 << isAllSent << " lastACK received? " << received_last_ack << endl;
 //            if (isAllSent && received_last_ack) {
 //                cout << endl;
 //                cout << LAST_ACK_FLAG << " AND " << last_ack_num <<endl;
@@ -234,26 +227,24 @@ int main(int argc, char **argv) {
 //                    break;
 //            }
 
-
-
-
         }
 
         // SEND
-        // TODO TIMEOUT RESEND
         // find the head of the send window
 
-        // find the head of the send window
+        // timeout resend
         struct timeval cur_time;
         gettimeofday(&cur_time, NULL);
-        for(int i = 0; i < WINDOW_SIZE; i++){
-            if(window[i]->is_received == false && window[i]->is_send){
-                int time_diff = (cur_time.tv_sec - window[i]->send_time.tv_sec) * 1000000 + (cur_time.tv_usec - window[i] -> send_time.tv_usec);
+        for (int i = 0; i < WINDOW_SIZE; i++) {
+            if (window[i]->is_received == false && window[i]->is_send) {
+                int time_diff = (cur_time.tv_sec - window[i]->send_time.tv_sec) * 1000000 +
+                                (cur_time.tv_usec - window[i]->send_time.tv_usec);
                 if (time_diff > TIMEOUT) {
 
                     if (sendto(send_sock, window[i]->packet, BUFFER_SIZE, 0, (struct sockaddr *) &sender_sin,
                                sender_sin_len) > 0) {
-                        cout << "Resend: seq_num: " << *(int *)window[i]->packet <<endl;
+                        gettimeofday(&window[i]->send_time, NULL);
+                        cout << "Resend: seq_num: " << *(int *) window[i]->packet << endl;
                     } else {
                         cout << "SEND FAIL " << endl;
                     }
@@ -320,7 +311,7 @@ int main(int argc, char **argv) {
             if (sendto(send_sock, node_to_send->packet, BUFFER_SIZE, 0, (struct sockaddr *) &sender_sin,
                        sender_sin_len) > 0) {
 //                curr_seq = (curr_seq + 1) % (MAX_SEQ_LEN);
-                node_to_send->is_send = true;   // ADD
+                node_to_send->is_send = true;
 
                 curr_seq += 1;
                 if (curr_seq == MAX_SEQ_LEN) {
@@ -332,9 +323,7 @@ int main(int argc, char **argv) {
     }
 
     // TODO DEAL WITH THE ENDING
-    cout << "Send " << send_count << " data packet and receive: " << recv_count<<" ack" <<endl;
-//    char end_buff[];
-
+    cout << "Send " << send_count << " data packet and receive: " << recv_count << " ack" << endl;
 
     cout << "[send complete!]" << endl;
     inFile.close();

@@ -14,8 +14,8 @@
 #include "iostream"
 #include "utils.h"
 
-#include <chrono>
-#include <thread>
+//#include <chrono>
+//#include <thread>
 
 using namespace std;
 
@@ -73,6 +73,11 @@ int main(int argc, char **argv) {
     ofstream outFile;
     int file_len;
 
+    bool first_recv_meta = true;
+
+    int send_count = 0;
+    int recv_count = 0;
+
     vector<receiver_window_node *> window;
     for (int i = 0; i < WINDOW_SIZE; i++) {
         receiver_window_node *node = (receiver_window_node *) malloc(sizeof(int) + sizeof(bool) + PACKET_DATA_LEN);
@@ -89,7 +94,7 @@ int main(int argc, char **argv) {
                                 &client_len);
         if (recv_len <= 0) continue;    // Failed receiving data
 
-        if (!get_random()) continue;
+//        if (!get_random()) continue;
 
         int seq_num = *((int *) buff);
 
@@ -122,7 +127,10 @@ int main(int argc, char **argv) {
             sendto(server_sock, &ack_buff, ACK_BUFF_LEN, 0, (struct sockaddr *) &client_sin, client_len);
 
             // Read
-            outFile.open(strcat(file_path, ".recv"), ios::out | ios::binary);
+            if (first_recv_meta) {
+                outFile.open(strcat(file_path, ".recv"), ios::out | ios::binary);
+                first_recv_meta = false;
+            }
             curr_seq = 0;
         } else {
             data_packet *received_packet = (data_packet *) buff;
@@ -163,7 +171,6 @@ int main(int argc, char **argv) {
 
                 continue;
             } else {
-//                cout <<"Sequence number: " << seq_num << " queue head: " << curr_seq <<endl;
                 // If the packet is received? (duplicate) Do not send ack back!
                 receiver_window_node *packet_in_window = window[seq_num % (WINDOW_SIZE)];
                 if (packet_in_window->isReceived) {
@@ -184,11 +191,12 @@ int main(int argc, char **argv) {
                 if (seq_num == curr_seq) {  // If matches, write that to file and move window
                     cout << "[recv data] / ACCEPTED (in-order)" << endl;
                     // write back and move
-
                     int curr_idx = curr_seq % (WINDOW_SIZE);
                     receiver_window_node *currNode = window[curr_idx];
                     while (currNode->isReceived) {
                         outFile.write(currNode->data, packet_len);
+                        cout <<"Write file, recv_count is "<< recv_count + 1  <<endl;
+                        recv_count += 1;
                         if (curr_seq == last_seq) {
                             finish = true;
                             break;
@@ -219,6 +227,7 @@ int main(int argc, char **argv) {
 //                std::this_thread::sleep_for(std::chrono::milliseconds(300));
 
                 sendto(server_sock, ack_buff, ACK_BUFF_LEN, 0, (struct sockaddr *) &client_sin, client_len);
+                send_count += 1;
                 if (finish) {
                     cout << "[complete!]" << endl;
                     break;
@@ -227,6 +236,7 @@ int main(int argc, char **argv) {
         }
     }
 
+    cout << "Send " << send_count << " ack packet and receive: " << recv_count<<" data packet" <<endl;
 
 
     outFile.close();
