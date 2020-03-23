@@ -127,7 +127,7 @@ int main(int argc, char **argv) {
         // TODO Timeout
         gettimeofday(&timestamp, NULL);
         time_gap = (timestamp.tv_sec - meta_time.tv_sec) * 1000000 + (timestamp.tv_usec - meta_time.tv_usec);
-        if (meta_first_time && time_gap > TIMEOUT) {
+        if (meta_first_time || time_gap > TIMEOUT) {
             if (meta_first_time) meta_first_time = false;
             sendto(send_sock, meta_buff, sizeof(meta_buff), 0, (struct sockaddr *) &sender_sin, sender_sin_len);
             cout << "META DATA SENT" << endl;
@@ -171,6 +171,7 @@ int main(int argc, char **argv) {
     bool endFlag = false;
 
     while (true) {
+//        cout << "Hello" << endl;
         // RECEIVE
         received_ack_len = recvfrom(send_sock, ack_buff, sizeof(ack_buff), MSG_DONTWAIT,
                                     (struct sockaddr *) &sender_sin, &sender_sin_len);
@@ -203,31 +204,31 @@ int main(int argc, char **argv) {
                         last_ack_num = -1;
                     }
 
-                    if (isAllSent && lastReceived) {
-                        if ((LAST_ACK_FLAG == MAX_SEQ_LEN - 1 && last_ack_num == -1) ||
-                            (LAST_ACK_FLAG == last_ack_num)) {
-                            endFlag = true;
-                            break;
-                        }
-                    }
-                }
-                if (endFlag) {
-                    break;
+//                    if (isAllSent && lastReceived) {
+//                        if ((LAST_ACK_FLAG == MAX_SEQ_LEN - 1 && last_ack_num == -1) || (LAST_ACK_FLAG == last_ack_num)) {
+//                            endFlag = true;
+//                            break;
+//                        }
+//                    }
                 }
 
             }
             cout << "RECEIVED ACK PACKET " << ack << " head of queue: " << last_ack_num + 1 << " isallsent? "
                  << isAllSent << " lastACK received? " << received_last_ack << endl;
-//            if (isAllSent && received_last_ack) {
-//                cout << endl;
-//                cout << LAST_ACK_FLAG << " AND " << last_ack_num <<endl;
-//                cout << endl;
-//                if ((LAST_ACK_FLAG == MAX_SEQ_LEN - 1 && last_ack_num == -1) ||
-//                    (LAST_ACK_FLAG == last_ack_num))
+            if (isAllSent && lastReceived) {
+                cout << endl;
+                cout << LAST_ACK_FLAG << " AND " << last_ack_num <<endl;
+                cout << endl;
+                if ((LAST_ACK_FLAG == MAX_SEQ_LEN - 1 && last_ack_num == 0) || (LAST_ACK_FLAG == last_ack_num)) { // NEW ADD
+                    endFlag  = true;
 //                    break;
-//            }
+                }
 
+            }
         }
+
+        if (endFlag) break;
+
 
         // SEND
         // find the head of the send window
@@ -244,7 +245,7 @@ int main(int argc, char **argv) {
                     if (sendto(send_sock, window[i]->packet, BUFFER_SIZE, 0, (struct sockaddr *) &sender_sin,
                                sender_sin_len) > 0) {
                         gettimeofday(&window[i]->send_time, NULL);
-                        cout << "Resend: seq_num: " << *(int *) window[i]->packet << endl;
+//                        cout << "Resend: seq_num: " << *(int *) window[i]->packet << endl;
                     } else {
                         cout << "SEND FAIL " << endl;
                     }
@@ -259,7 +260,7 @@ int main(int argc, char **argv) {
             node_to_send = window[curr_seq % (WINDOW_SIZE)];
             memset(node_to_send->packet, 0, BUFFER_SIZE * sizeof(char));
             int pending_len = file_len - curr_file_pos;
-//            cout << "FILE LEN: " << file_len << " CURRENT POSITION: " << curr_file_pos << " PENDING: " << pending_len<< endl;
+            cout << "FILE LEN: " << file_len << " CURRENT POSITION: " << curr_file_pos << " PENDING: " << pending_len<< endl;
             // Create packet
             if (pending_len <= PACKET_DATA_LEN) {
                 node_to_send->is_last = true;
@@ -305,8 +306,8 @@ int main(int argc, char **argv) {
             int show_len2 = *(int *) (node_to_send->packet + sizeof(int));
             bool show_last2 = *(bool *) (node_to_send->packet + 2 * sizeof(int));
             unsigned short show_checksum = *(unsigned short *) (node_to_send->packet + 2 * sizeof(int) + sizeof(bool));
-            cout << "SEQ NUM: " << curr_seq << " SEND SEQUENCE NUM:" << show2 << " LEN: " << show_len2 << " LAST?: "
-                 << show_last2 << endl;
+//            cout << "SEQ NUM: " << curr_seq << " SEND SEQUENCE NUM:" << show2 << " LEN: " << show_len2 << " LAST?: "
+//                 << show_last2 << endl;
 
             if (sendto(send_sock, node_to_send->packet, BUFFER_SIZE, 0, (struct sockaddr *) &sender_sin,
                        sender_sin_len) > 0) {
@@ -322,8 +323,16 @@ int main(int argc, char **argv) {
         }
     }
 
-    // TODO DEAL WITH THE ENDING
     cout << "Send " << send_count << " data packet and receive: " << recv_count << " ack" << endl;
+    // TODO DEAL WITH THE ENDING
+    char end_flag_ack_buff[ACK_BUFF_LEN];
+    *(int *) end_flag_ack_buff = END_DATA_FLAG;    // Ack num
+    *(unsigned short *) (end_flag_ack_buff + sizeof(int) + sizeof(bool)) = get_checksum(end_flag_ack_buff,
+                                                                               sizeof(int));   // Checksum
+    int max_flag_trail = 200;
+    for (int i = 0; i< max_flag_trail; i++) {
+        sendto(send_sock, &end_flag_ack_buff, ACK_BUFF_LEN, 0, (struct sockaddr *) &sender_sin, sender_sin_len);
+    }
 
     cout << "[send complete!]" << endl;
     inFile.close();

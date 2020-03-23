@@ -82,6 +82,7 @@ int main(int argc, char **argv) {
     for (int i = 0; i < WINDOW_SIZE; i++) {
         receiver_window_node *node = (receiver_window_node *) malloc(sizeof(int) + sizeof(bool) + PACKET_DATA_LEN);
         node->isReceived = false;
+        node->packet_len = 0;
         node->data = (char *) malloc(PACKET_DATA_LEN);
         window.push_back(node);
     }
@@ -94,11 +95,10 @@ int main(int argc, char **argv) {
                                 &client_len);
         if (recv_len <= 0) continue;    // Failed receiving data
 
-//        if (!get_random()) continue;
-
         int seq_num = *((int *) buff);
+        int packet_len = *(int *) (buff + sizeof(int));
 
-        cout << "PACKET " << seq_num  <<" RECEIVED" << endl;
+//        cout << "PACKET " << seq_num << " RECEIVED" << endl;
         if (seq_num == META_DATA_FLAG) {    // Meta Data
             cout << "Meta data received" << endl;
 
@@ -106,14 +106,13 @@ int main(int argc, char **argv) {
             int file_path_len = *(int *) (buff + 2 * sizeof(int));
 
             if (!check_meta_checksum(buff, file_path_len)) {  // OR PUT IT IN FRONT AND USE MAX_META_LEN???
-                cout << "[recv data] / IGNORED (corrupted packet)" << endl;
+                cout << "[recv meta data] / IGNORED (corrupted packet)" << endl;
                 continue;
             }
 
             char file_path[MAX_FILE_PATH_LEN];
             memcpy(file_path, buff + 3 * sizeof(int) + sizeof(unsigned short), MAX_FILE_PATH_LEN);
-            cout << "File path is:" << file_path << " File length is: " << file_path_len << " Created file is: "
-                 << file_path << ".recv" << endl;
+
 
             // create an ACK packet
             *(int *) ack_buff = META_DATA_FLAG;    // Ack num
@@ -130,8 +129,17 @@ int main(int argc, char **argv) {
             if (first_recv_meta) {
                 outFile.open(strcat(file_path, ".recv"), ios::out | ios::binary);
                 first_recv_meta = false;
+                cout << "File path is:" << file_path << " File length is: " << file_path_len << " Created file is: "
+                     << file_path << ".recv" << endl;
             }
             curr_seq = 0;
+        } else if (seq_num == END_DATA_FLAG) {
+            if (!check_ack_checksum(buff)) {
+                cout << "end flag got, but corrupted" << endl;
+            } else {
+                cout << "end flag received !!!!!!!!!!!! " << endl;
+                break;
+            }
         } else {
             data_packet *received_packet = (data_packet *) buff;
             int packet_len = received_packet->packet_len;    // *((int *) buff+sizeof(int));
@@ -149,53 +157,59 @@ int main(int argc, char **argv) {
             }
 
             // Check if this is out of the range of window, ignore and do not send ack back!
-            cout << "window的左边界" <<curr_seq << " 右边界 " << (curr_seq + WINDOW_SIZE) % (MAX_SEQ_LEN) << endl;
+//            cout << "window的左边界" << curr_seq << " 右边界 " << (curr_seq + WINDOW_SIZE) % (MAX_SEQ_LEN) << endl;
             if (!inWindow(seq_num, curr_seq - 1)) {
-                cout << "[recv data] / IGNORED (out-of-window)" << endl;
+//                cout << "[recv data] / IGNORED (out-of-window)" << endl;
 
                 // create an ACK packet
                 *(int *) ack_buff = seq_num;    // Ack num
                 *(bool *) (ack_buff + sizeof(int)) = false; // is_meta
-                *(unsigned short *) (ack_buff + sizeof(int) + sizeof(bool)) = get_checksum(ack_buff, sizeof(int));   // Checksum
+                *(unsigned short *) (ack_buff + sizeof(int) + sizeof(bool)) = get_checksum(ack_buff,
+                                                                                           sizeof(int));   // Checksum
 
-                if (is_last_packet) {
-                    *(bool *) (ack_buff + sizeof(int) + sizeof(bool) + sizeof(unsigned short)) = true;
-                } else {
-                    *(bool *) (ack_buff + sizeof(int) + sizeof(bool) + sizeof(unsigned short)) = false;
-                }
+                *(bool *) (ack_buff + sizeof(int) + sizeof(bool) + sizeof(unsigned short)) = is_last_packet;
 
-                cout << "OUT-OF-WINDOW, NOW SEND ACK IS: " << *(int *) ack_buff << " AND ACK CHECKSUM: "
-                     << *(unsigned short *) (ack_buff + sizeof(int) + sizeof(bool)) << endl;
+//                cout << "OUT-OF-WINDOW, NOW SEND ACK IS: " << *(int *) ack_buff << " AND ACK CHECKSUM: "
+//                     << *(unsigned short *) (ack_buff + sizeof(int) + sizeof(bool)) << endl;
                 sendto(server_sock, &ack_buff, ACK_BUFF_LEN, 0, (struct sockaddr *) &client_sin, client_len);
-                // IGNORE OUT OF BOUND
-
                 continue;
             } else {
                 // If the packet is received? (duplicate) Do not send ack back!
                 receiver_window_node *packet_in_window = window[seq_num % (WINDOW_SIZE)];
                 if (packet_in_window->isReceived) {
-                    cout << "[recv data] / IGNORED (duplicate)" << endl;
+//                    cout << "[recv data] / RESEND (duplicate)" << endl;
+
+                    *(int *) ack_buff = seq_num;    // Ack num
+                    *(bool *) (ack_buff + sizeof(int)) = false; // is_meta
+                    *(unsigned short *) (ack_buff + sizeof(int) + sizeof(bool)) = get_checksum(ack_buff,
+                                                                                               sizeof(int));   // Checksum
+                    *(bool *) (ack_buff + sizeof(int) + sizeof(bool) + sizeof(unsigned short)) = is_last_packet;
+
+                    cout << "DUPLICATE, SO RESEND ACK IS: " << *(int *) ack_buff << " isLast? "
+                         << *(bool *) (ack_buff + sizeof(int) + sizeof(bool) + sizeof(unsigned short)) << endl;
+
+                    sendto(server_sock, ack_buff, ACK_BUFF_LEN, 0, (struct sockaddr *) &client_sin, client_len);
                     continue;
                 }
 
+
                 // Copy data into the node
                 packet_in_window->isReceived = true;
+                packet_in_window->packet_len = packet_len;
                 packet_in_window->seq_num = seq_num;
 
                 memset(packet_in_window->data, 0, PACKET_DATA_LEN * sizeof(char));
 
                 memcpy(packet_in_window->data, (buff + PACKET_HEADER_LEN), PACKET_DATA_LEN);
-//                cout << "RECEIVED SEQ_NUM: " << received_packet->seq_num << " PACKET LEN: "
-//                     << received_packet->packet_len << endl;
                 // Update window
                 if (seq_num == curr_seq) {  // If matches, write that to file and move window
-                    cout << "[recv data] / ACCEPTED (in-order)" << endl;
+//                    cout << "[recv data] / ACCEPTED (in-order)" << endl;
                     // write back and move
                     int curr_idx = curr_seq % (WINDOW_SIZE);
                     receiver_window_node *currNode = window[curr_idx];
                     while (currNode->isReceived) {
-                        outFile.write(currNode->data, packet_len);
-                        cout <<"Write file, recv_count is "<< recv_count + 1  <<endl;
+                        outFile.write(currNode->data, currNode->packet_len);
+                        cout <<"Write! Is it the last?" << is_last_packet << " and WE received a packet with length: " << currNode->packet_len <<endl;
                         recv_count += 1;
                         if (curr_seq == last_seq) {
                             finish = true;
@@ -208,21 +222,23 @@ int main(int argc, char **argv) {
                         currNode = window[curr_idx];
                     }
                 } else {    // If fall in window, store it.
-                    cout << "[recv data] / ACCEPTED (out-of-order)" << endl;
+//                    cout << "[recv data] / ACCEPTED (out-of-order)" << endl;
                 }
+
+                cout << "Curr seq is: " << seq_num << "window的左边界" << curr_seq << " 右边界 " << (curr_seq + WINDOW_SIZE) % (MAX_SEQ_LEN) << endl;
 
                 // Create ack packet
                 *(int *) ack_buff = seq_num;    // Ack num
                 *(bool *) (ack_buff + sizeof(int)) = false; // is_meta
                 *(unsigned short *) (ack_buff + sizeof(int) + sizeof(bool)) = get_checksum(ack_buff,
                                                                                            sizeof(int));   // Checksum
-                 if (is_last_packet) {
+                if (is_last_packet) {
                     *(bool *) (ack_buff + sizeof(int) + sizeof(bool) + sizeof(unsigned short)) = true;
                 } else {
                     *(bool *) (ack_buff + sizeof(int) + sizeof(bool) + sizeof(unsigned short)) = false;
                 }
-                cout << "SEND ACK IS: " << *(int *) ack_buff << " isLast? "
-                     << *(bool *) (ack_buff + sizeof(int) + sizeof(bool) + sizeof(unsigned short)) << endl;
+//                cout << "SEND ACK IS: " << *(int *) ack_buff << " isLast? "
+//                     << *(bool *) (ack_buff + sizeof(int) + sizeof(bool) + sizeof(unsigned short)) << endl;
 
 //                std::this_thread::sleep_for(std::chrono::milliseconds(300));
 
@@ -230,13 +246,15 @@ int main(int argc, char **argv) {
                 send_count += 1;
                 if (finish) {
                     cout << "[complete!]" << endl;
-                    break;
+                    // TODO 加一个timeout，来解决没收到end-FLA，保证退出
+
+//                    break;
                 }
             }
         }
     }
 
-    cout << "Send " << send_count << " ack packet and receive: " << recv_count<<" data packet" <<endl;
+    cout << "Send " << send_count << " ack packet and receive: " << recv_count << " data packet" << endl;
 
 
     outFile.close();
