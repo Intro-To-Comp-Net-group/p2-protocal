@@ -22,17 +22,18 @@
 
 using namespace std;
 
-#define WINDOW_SIZE 8//48
+#define WINDOW_SIZE 48
 #define MAX_SEQ_LEN 2*WINDOW_SIZE
 
 #define PACKET_DATA_LEN 1024
-#define PACKET_HEADER_LEN 2*sizeof(int) + sizeof(bool) + sizeof(unsigned short)
+#define PACKET_HEADER_LEN 3*sizeof(int) + sizeof(bool) + sizeof(unsigned short)
 #define BUFFER_SIZE PACKET_DATA_LEN + PACKET_HEADER_LEN
 #define MAX_FILE_PATH_LEN 64
 
-#define ACK_BUFF_LEN sizeof(int)+sizeof(bool) + sizeof(unsigned short) + sizeof(bool)
+#define ACK_BUFF_LEN 2*sizeof(int)+sizeof(bool) + sizeof(unsigned short) + sizeof(bool)
 
 #define META_DATA_FLAG 65535
+#define END_DATA_FLAG 65534
 
 
 #define TIMEOUT 100000
@@ -48,6 +49,7 @@ bool get_random() {
 
 struct ack_packet {
     int ack;
+    int acc_ack;
     bool is_meta;
     unsigned short checksum;
     bool is_last;
@@ -65,6 +67,7 @@ struct meta_data {
 
 struct data_packet {
     int seq_num;
+    int acc_seq_num;
     int packet_len;
     bool is_last_packet;
     unsigned short checksum;
@@ -76,6 +79,7 @@ struct data_packet {
 // Wrap packet's data and receive
 struct receiver_window_node {
     bool isReceived;
+    int packet_len;
     int seq_num;
     bool is_last;   // NEWADD
     char *data;
@@ -146,15 +150,15 @@ unsigned short get_checksum(char *addr, int count) {
 }
 
 bool check_ack_checksum(char *ack_buff) {
-    unsigned short received_ack_checksum = *(unsigned short *) (ack_buff + sizeof(int) + sizeof(bool));
-    unsigned short cal_ack_checksum = get_checksum(ack_buff, sizeof(int));
+    unsigned short received_ack_checksum = *(unsigned short *) (ack_buff + 2*sizeof(int) + sizeof(bool));
+    unsigned short cal_ack_checksum = get_checksum(ack_buff+sizeof(int), sizeof(int));
 //    cout << "Received ack checksum is: " << received_ack_checksum << ", Calculated Checksum is: " << cal_ack_checksum << endl;
     return received_ack_checksum == cal_ack_checksum;
 //    return true;
 }
 
 bool check_checksum(char *received_buff) {
-    unsigned short recv_checksum = *(unsigned short *) (received_buff + 2 * sizeof(int) + sizeof(bool));
+    unsigned short recv_checksum = *(unsigned short *) (received_buff + 3 * sizeof(int) + sizeof(bool));
     unsigned short cal_checksum = get_checksum(received_buff + PACKET_HEADER_LEN, PACKET_DATA_LEN);
 //    cout << "Received packet checksum is: " << recv_checksum << ", Calculated Checksum is: " << cal_checksum << endl;
     return recv_checksum == cal_checksum;

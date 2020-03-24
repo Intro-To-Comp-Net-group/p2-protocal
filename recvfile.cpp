@@ -67,11 +67,16 @@ int main(int argc, char **argv) {
 
     char buff[BUFFER_SIZE];
     char ack_buff[ACK_BUFF_LEN];
-    int curr_seq = -1;
-    int last_seq = -1;
-    bool finish = false;
     ofstream outFile;
+
+    bool finish = false;
     int file_len;
+    int last_seq = -1;
+
+    int curr_seq = -1;
+
+//    int acc_ack_seq = -1;
+    int acc_recv_seq = -1;
 
     bool first_recv_meta = true;
 
@@ -88,6 +93,7 @@ int main(int argc, char **argv) {
     }
 
     // Metadata stop and wait with timeout
+    bool meta_OK = false;
 
     while (true) {
         memset(buff, 0, BUFFER_SIZE);
@@ -96,10 +102,14 @@ int main(int argc, char **argv) {
         if (recv_len <= 0) continue;    // Failed receiving data
 
         int seq_num = *((int *) buff);
-        int packet_len = *(int *) (buff + sizeof(int));
+        int acc_seq_num = *(int *) (buff + sizeof(int));
+        int packet_len = *(int *) (buff + 2*sizeof(int));
 
 //        cout << "PACKET " << seq_num << " RECEIVED" << endl;
         if (seq_num == META_DATA_FLAG) {    // Meta Data
+
+            if (meta_OK) continue;
+
             cout << "Meta data received" << endl;
 
             file_len = *(int *) (buff + sizeof(int));
@@ -116,12 +126,13 @@ int main(int argc, char **argv) {
 
             // create an ACK packet
             *(int *) ack_buff = META_DATA_FLAG;    // Ack num
-            *(bool *) (ack_buff + sizeof(int)) = true; // is_meta
-            *(unsigned short *) (ack_buff + sizeof(int) + sizeof(bool)) = get_checksum(ack_buff,
+            *(int *) (ack_buff + sizeof(int))  =  META_DATA_FLAG;
+            *(bool *) (ack_buff + 2 * sizeof(int)) = true; // is_meta
+            *(unsigned short *) (ack_buff + 2 * sizeof(int) + sizeof(bool)) = get_checksum(ack_buff + sizeof(int),
                                                                                        sizeof(int));   // Checksum
 
-            cout << "META DATA! SEND META ACK IS: " << *(int *) ack_buff << " AND ACK CHECKSUM: "
-                 << *(unsigned short *) (ack_buff + sizeof(int) + sizeof(bool)) << endl;
+            cout << "META DATA! SEND META ACK IS: " << *(int *) ack_buff << " AND ACC ACK: "
+                 << *(unsigned short *) (ack_buff + sizeof(int)) << endl;
 
             sendto(server_sock, &ack_buff, ACK_BUFF_LEN, 0, (struct sockaddr *) &client_sin, client_len);
 
@@ -134,6 +145,7 @@ int main(int argc, char **argv) {
             }
             curr_seq = 0;
         } else if (seq_num == END_DATA_FLAG) {
+            meta_OK = true;
             if (!check_ack_checksum(buff)) {
                 cout << "end flag got, but corrupted" << endl;
             } else {
@@ -141,12 +153,12 @@ int main(int argc, char **argv) {
                 break;
             }
         } else {
+            meta_OK = true;
             data_packet *received_packet = (data_packet *) buff;
             int packet_len = received_packet->packet_len;    // *((int *) buff+sizeof(int));
             bool is_last_packet = received_packet->is_last_packet;
 
             // TODO checksum
-            unsigned short received_checksum = received_packet->checksum;
             if (!check_checksum(buff)) {
                 cout << "[recv data] / IGNORED (corrupted packet)" << endl;
                 continue;
@@ -154,20 +166,20 @@ int main(int argc, char **argv) {
 
             if (is_last_packet) {
                 last_seq = seq_num;
+//                last_seq = acc_seq_num;
             }
 
             // Check if this is out of the range of window, ignore and do not send ack back!
-//            cout << "window的左边界" << curr_seq << " 右边界 " << (curr_seq + WINDOW_SIZE) % (MAX_SEQ_LEN) << endl;
             if (!inWindow(seq_num, curr_seq - 1)) {
 //                cout << "[recv data] / IGNORED (out-of-window)" << endl;
-
                 // create an ACK packet
                 *(int *) ack_buff = seq_num;    // Ack num
-                *(bool *) (ack_buff + sizeof(int)) = false; // is_meta
-                *(unsigned short *) (ack_buff + sizeof(int) + sizeof(bool)) = get_checksum(ack_buff,
+                *(int *) (ack_buff + sizeof(int)) = acc_seq_num;
+                *(bool *) (ack_buff + 2 * sizeof(int)) = false; // is_meta
+                *(unsigned short *) (ack_buff + 2 * sizeof(int) + sizeof(bool)) = get_checksum(ack_buff + sizeof(int),
                                                                                            sizeof(int));   // Checksum
 
-                *(bool *) (ack_buff + sizeof(int) + sizeof(bool) + sizeof(unsigned short)) = is_last_packet;
+                *(bool *) (ack_buff + 2*sizeof(int) + sizeof(bool) + sizeof(unsigned short)) = is_last_packet;
 
 //                cout << "OUT-OF-WINDOW, NOW SEND ACK IS: " << *(int *) ack_buff << " AND ACK CHECKSUM: "
 //                     << *(unsigned short *) (ack_buff + sizeof(int) + sizeof(bool)) << endl;
@@ -177,21 +189,25 @@ int main(int argc, char **argv) {
                 // If the packet is received? (duplicate) Do not send ack back!
                 receiver_window_node *packet_in_window = window[seq_num % (WINDOW_SIZE)];
                 if (packet_in_window->isReceived) {
-//                    cout << "[recv data] / RESEND (duplicate)" << endl;
 
                     *(int *) ack_buff = seq_num;    // Ack num
-                    *(bool *) (ack_buff + sizeof(int)) = false; // is_meta
-                    *(unsigned short *) (ack_buff + sizeof(int) + sizeof(bool)) = get_checksum(ack_buff,
+                    *(int *) (ack_buff + sizeof(int)) = acc_seq_num;
+                    *(bool *) (ack_buff + 2  * sizeof(int)) = false; // is_meta
+                    *(unsigned short *) (ack_buff + 2 * sizeof(int) + sizeof(bool)) = get_checksum(ack_buff + sizeof(int),
                                                                                                sizeof(int));   // Checksum
-                    *(bool *) (ack_buff + sizeof(int) + sizeof(bool) + sizeof(unsigned short)) = is_last_packet;
+                    *(bool *) (ack_buff + 2 * sizeof(int) + sizeof(bool) + sizeof(unsigned short)) = is_last_packet;
 
-                    cout << "DUPLICATE, SO RESEND ACK IS: " << *(int *) ack_buff << " isLast? "
-                         << *(bool *) (ack_buff + sizeof(int) + sizeof(bool) + sizeof(unsigned short)) << endl;
+                    cout << "DUPLICATE, SO RESEND ACK IS: " << *(int *) ack_buff << " cumulative ack: " << acc_seq_num << " isLast? "
+                         << *(bool *) (ack_buff + 2*sizeof(int) + sizeof(bool) + sizeof(unsigned short)) << endl;
 
                     sendto(server_sock, ack_buff, ACK_BUFF_LEN, 0, (struct sockaddr *) &client_sin, client_len);
                     continue;
                 }
 
+                if (acc_seq_num <= acc_recv_seq) {
+                    cout << "delay, we ignore it"<< endl;
+                    continue;
+                }
 
                 // Copy data into the node
                 packet_in_window->isReceived = true;
@@ -203,19 +219,23 @@ int main(int argc, char **argv) {
                 memcpy(packet_in_window->data, (buff + PACKET_HEADER_LEN), PACKET_DATA_LEN);
                 // Update window
                 if (seq_num == curr_seq) {  // If matches, write that to file and move window
+
+
 //                    cout << "[recv data] / ACCEPTED (in-order)" << endl;
                     // write back and move
                     int curr_idx = curr_seq % (WINDOW_SIZE);
                     receiver_window_node *currNode = window[curr_idx];
                     while (currNode->isReceived) {
                         outFile.write(currNode->data, currNode->packet_len);
-                        cout <<"Write! Is it the last?" << is_last_packet << " and WE received a packet with length: " << currNode->packet_len <<endl;
+                        cout <<"Write! seq num: "<< currNode->seq_num  <<" Is it the last?" << is_last_packet << " and WE received a packet with length: " << currNode->packet_len <<endl;
                         recv_count += 1;
                         if (curr_seq == last_seq) {
                             finish = true;
                             break;
                         }
                         curr_seq = (curr_seq + 1) % (MAX_SEQ_LEN);
+
+                        acc_recv_seq += 1;
 
                         currNode->isReceived = false;
                         curr_idx = (curr_idx + 1) % (WINDOW_SIZE);
@@ -229,18 +249,13 @@ int main(int argc, char **argv) {
 
                 // Create ack packet
                 *(int *) ack_buff = seq_num;    // Ack num
-                *(bool *) (ack_buff + sizeof(int)) = false; // is_meta
-                *(unsigned short *) (ack_buff + sizeof(int) + sizeof(bool)) = get_checksum(ack_buff,
+                *(int *) (ack_buff + sizeof(int)) = acc_seq_num;
+                *(bool *) (ack_buff + 2*sizeof(int)) = false; // is_meta
+                *(unsigned short *) (ack_buff + 2*sizeof(int) + sizeof(bool)) = get_checksum(ack_buff + sizeof(int),
                                                                                            sizeof(int));   // Checksum
-                if (is_last_packet) {
-                    *(bool *) (ack_buff + sizeof(int) + sizeof(bool) + sizeof(unsigned short)) = true;
-                } else {
-                    *(bool *) (ack_buff + sizeof(int) + sizeof(bool) + sizeof(unsigned short)) = false;
-                }
+                *(bool *) (ack_buff + 2*sizeof(int) + sizeof(bool) + sizeof(unsigned short)) = is_last_packet;
 //                cout << "SEND ACK IS: " << *(int *) ack_buff << " isLast? "
 //                     << *(bool *) (ack_buff + sizeof(int) + sizeof(bool) + sizeof(unsigned short)) << endl;
-
-//                std::this_thread::sleep_for(std::chrono::milliseconds(300));
 
                 sendto(server_sock, ack_buff, ACK_BUFF_LEN, 0, (struct sockaddr *) &client_sin, client_len);
                 send_count += 1;
